@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets & local config — never commit
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Runtime data — customer / PSAP / PII — never commit
+Tickets/
+scratch/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local session memory / scratch
+.remember/
