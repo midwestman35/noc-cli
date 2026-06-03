@@ -233,21 +233,31 @@ async def _run_investigate(
     # ── History ──────────────────────────────────────────────────────────────
     tracker.set_phase(InvestigatePhase.HISTORY)
     from noc_cli.config import db_path
-    from noc_cli.history import seed_history
-    from noc_cli.zendesk import ZendeskClient
 
-    zd_for_history = ZendeskClient(cfg)
     mem_db = Path(os.environ.get("NOC_DB_PATH", str(db_path())))
     mem_md = tickets_root / "MEMORY.md"
     mem_store = MemoryStore(db_path=mem_db, memory_md_path=mem_md)
     mem_store.init()
 
-    symptom_tag = "[unclassified]"  # refined by the agent; default for history seeding
-    candidates = seed_history(symptom_tag, zendesk_client=zd_for_history, memory_store=mem_store)
-    history_context = "\n".join(
-        f"- Ticket #{c.ticket_id}: {c.subject} (source: {c.source})" for c in candidates[:10]
-    )
-    tracker.mark_done(f"History seeded: {len(candidates)} candidate(s)")
+    history_context = ""
+    if fixture is None:
+        # Live history seeding only when the agent will actually run. Fixture
+        # (offline replay) mode skips Zendesk entirely so the command works
+        # without configured credentials.
+        from noc_cli.history import seed_history
+        from noc_cli.zendesk import ZendeskClient
+
+        zd_for_history = ZendeskClient(cfg)
+        symptom_tag = "[unclassified]"  # refined by the agent; default for seeding
+        candidates = seed_history(
+            symptom_tag, zendesk_client=zd_for_history, memory_store=mem_store
+        )
+        history_context = "\n".join(
+            f"- Ticket #{c.ticket_id}: {c.subject} (source: {c.source})" for c in candidates[:10]
+        )
+        tracker.mark_done(f"History seeded: {len(candidates)} candidate(s)")
+    else:
+        tracker.mark_done("History skipped (fixture mode)")
 
     # ── Agent (or fixture replay) ─────────────────────────────────────────────
     tracker.set_phase(InvestigatePhase.AGENT)

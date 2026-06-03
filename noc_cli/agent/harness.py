@@ -12,6 +12,9 @@ _DESTRUCTIVE_BASH_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\brm\b"),                    # rm (any form)
     re.compile(r"\bmv\b"),                    # mv (may exfil)
     re.compile(r"\bcp\b"),                    # cp (may exfil out of sandbox)
+    re.compile(r"\bscp\b"),                   # ssh file copy (exfil)
+    re.compile(r"\brsync\b"),                 # remote sync (exfil)
+    re.compile(r"\bsftp\b"),                  # ssh file transfer (exfil)
     re.compile(r"\bchmod\b"),                 # permission change
     re.compile(r"\bchown\b"),
     re.compile(r"\bcurl\b"),                  # network write

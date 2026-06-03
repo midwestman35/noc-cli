@@ -69,3 +69,15 @@ def test_investigate_force_overrides_soft_lock(tmp_path, monkeypatch):
     (ticket_dir / "STATE.md").write_text('---\nowner: "alice@axon.com"\n---\n')
     result = runner.invoke(app, ["investigate", "18432", "--no-agent", "--force"])
     assert result.exit_code == 0, result.output
+
+
+def test_investigate_fixture_works_without_zendesk_creds(tmp_path, monkeypatch):
+    # Offline fixture replay must NOT require Zendesk credentials configured.
+    monkeypatch.delenv("ZENDESK_SUBDOMAIN", raising=False)
+    monkeypatch.delenv("ZENDESK_EMAIL", raising=False)
+    monkeypatch.delenv("ZENDESK_API_TOKEN", raising=False)
+    monkeypatch.setenv("NOC_TICKETS_ROOT", str(tmp_path))
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    result = runner.invoke(app, ["investigate", "18432", "--fixture", str(FIXTURES)])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "18432" / "INTAKE.md").exists()
