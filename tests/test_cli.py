@@ -29,7 +29,7 @@ def test_help_lists_full_command_surface():
 
 
 def test_stub_command_reports_coming_soon():
-    result = runner.invoke(app, ["investigate", "12345"])
+    result = runner.invoke(app, ["watch"])
     assert result.exit_code == 0
     assert "not built yet" in result.stdout
 
