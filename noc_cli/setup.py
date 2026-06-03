@@ -2,11 +2,100 @@
 
 The `build_env_lines` function is a pure serialiser; no I/O.
 `run_setup` orchestrates the interactive wizard but accepts all
-side-effecting operations (prompt function, path) as arguments so
-it can be driven in tests without real stdin, real filesystem writes,
-or the real home directory.
+side-effecting operations (prompt function, destination path) as
+arguments so it can be driven in tests without real stdin and with
+writes redirected to a temp path rather than the real home directory.
 """
 from __future__ import annotations
+
+import os
+from collections.abc import Callable
+from pathlib import Path
+
+from noc_cli.config import Config
+
+
+# Canonical ordering of the .env keys — matches the spec's §14 grouping.
+_ENV_KEY_ORDER = [
+    "ZENDESK_SUBDOMAIN",
+    "ZENDESK_EMAIL",
+    "ZENDESK_API_TOKEN",
+    "NOC_TICKETS_ROOT",
+    "NOC_OWNER",
+    "NOC_WATCH_VIEW",
+    "NOC_WATCH_ASSIGNEE",
+    "NOC_NOTIFY",
+]
+
+
+# Type alias for the injected prompt callable.
+# Signature: (label, default="", hide_input=False) -> str
+PromptFn = Callable[..., str]
+
+
+def run_setup(
+    config_path: Path,
+    existing: Config,
+    prompt_fn: PromptFn,
+) -> None:
+    """Run the interactive wizard, collecting answers and writing the .env file.
+
+    Args:
+        config_path: Destination path for the .env file (typically config_path()).
+        existing: Current loaded Config; fields become prompt defaults on re-run.
+        prompt_fn: Callable(label, default="", hide_input=False) -> str.
+                   In production this wraps typer.prompt; in tests it is injected.
+    """
+    default_tickets = str(existing.tickets_root)
+    default_owner = existing.owner or os.environ.get("USER", "")
+    default_assignee = existing.watch_assignee or existing.zendesk_email
+
+    answers: dict[str, str] = {}
+
+    # --- Zendesk credentials ---
+    answers["ZENDESK_SUBDOMAIN"] = prompt_fn(
+        "Zendesk subdomain (e.g. carbyne)",
+        default=existing.zendesk_subdomain,
+    )
+    answers["ZENDESK_EMAIL"] = prompt_fn(
+        "Zendesk agent email",
+        default=existing.zendesk_email,
+    )
+    answers["ZENDESK_API_TOKEN"] = prompt_fn(
+        "Zendesk API token",
+        default=existing.zendesk_api_token,
+        hide_input=True,
+    )
+
+    # --- Local paths ---
+    answers["NOC_TICKETS_ROOT"] = prompt_fn(
+        "Tickets directory (absolute path)",
+        default=default_tickets,
+    )
+    answers["NOC_OWNER"] = prompt_fn(
+        "Your name/handle (recorded in STATE.md)",
+        default=default_owner,
+    )
+
+    # --- Watch settings (optional) ---
+    answers["NOC_WATCH_VIEW"] = prompt_fn(
+        "Zendesk view ID to watch (blank to skip)",
+        default=existing.watch_view,
+    )
+    answers["NOC_WATCH_ASSIGNEE"] = prompt_fn(
+        "Assignee to filter (email or name, blank = self)",
+        default=default_assignee,
+    )
+
+    # --- Notification preferences ---
+    answers["NOC_NOTIFY"] = prompt_fn(
+        "Notification channels (banner, ping — comma-separated)",
+        default=existing.notify or "banner,ping",
+    )
+
+    # Write the .env file (create parent dirs if needed).
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(build_env_lines(answers))
 
 
 def build_env_lines(answers: dict[str, str]) -> str:
