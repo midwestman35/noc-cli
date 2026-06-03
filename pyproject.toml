@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.7",
     "platformdirs>=4.2",
     "python-dotenv>=1.0",
+    "claude-agent-sdk>=0.1.0",
+    "textual>=0.60",
 ]
 
 [project.scripts]
@@ -26,6 +28,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["noc_cli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"noc_cli/data" = "noc_cli/data"
+"noc_cli/runbooks" = "noc_cli/runbooks"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
