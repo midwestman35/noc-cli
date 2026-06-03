@@ -1,0 +1,48 @@
+{
+  "rubric_version": "2026-05-13",
+  "intake": {
+    "ticket_id": 18433,
+    "url": "https://carbyne.zendesk.com/agent/tickets/18433",
+    "status": "open",
+    "tags": [],
+    "requester": "Site Admin",
+    "organization": "Riverside 911",
+    "one_line_fingerprint": "Riverside / unclassified / audio issue / no logs",
+    "ticket_summary": ["Customer reports audio issue but has not uploaded any logs."],
+    "context_pulls": [],
+    "initial_hypothesis": "Fork D — no log coverage of incident window",
+    "intake_decision": "ready_for_evidence_preflight"
+  },
+  "evidence_preflight": {
+    "gathered": [],
+    "decisive_evidence": [],
+    "missing_or_non_decisive": [
+      "No station logs uploaded",
+      "No PCAP provided",
+      "Incident timestamp not confirmed"
+    ]
+  },
+  "fork_packet": {
+    "fork_letter": "D",
+    "confidence": "Inconclusive",
+    "symptom_tag": "[unclassified]",
+    "rubric_class": "",
+    "quoted_rubric_row": "",
+    "reasoning": "No log files are present in the ticket folder. Cannot make a fork decision without evidence covering the incident window.",
+    "evidence_summary": [],
+    "missing_evidence": [
+      "Station logs covering incident timestamp ±30 min",
+      "Confirmed incident time (UTC and local)",
+      "Affected station ID(s)"
+    ],
+    "runbook_reference": {"slug": "", "section": ""},
+    "historical_matches": [],
+    "related_zendesk": [],
+    "related_jira": []
+  },
+  "drafts": {
+    "customer_reply": "Hi,\n\nTo investigate this audio issue, we need station logs covering the incident time window (±30 minutes) and the exact time the issue occurred (UTC preferred). Could you please upload those?\n\nThank you,\nCarbyne NOC",
+    "internal_note": "Fork D — no log coverage. Waiting on station logs and confirmed timestamp.",
+    "jira_draft": null
+  }
+}

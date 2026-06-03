@@ -1,0 +1,67 @@
+{
+  "rubric_version": "2026-05-13",
+  "intake": {
+    "ticket_id": 18432,
+    "url": "https://carbyne.zendesk.com/agent/tickets/18432",
+    "status": "open",
+    "tags": ["apex"],
+    "requester": "PSAP Ops",
+    "organization": "Aurora 911",
+    "one_line_fingerprint": "Aurora / apex / Network Error / 06:30 UTC",
+    "ticket_summary": ["All consoles showed Network Error banner for ~90 seconds at 06:30 UTC."],
+    "context_pulls": [
+      {"pull": "Last 3 tickets for Aurora 911", "result": "Ticket 41200 (Cobb, site LAN), Ticket 40900 (Aurora, same symptom)", "source": "Zendesk"}
+    ],
+    "initial_hypothesis": "Fork B — site LAN / SDWAN; multiple stations flipped simultaneously",
+    "intake_decision": "ready_for_evidence_preflight"
+  },
+  "evidence_preflight": {
+    "gathered": [
+      {
+        "evidence_type": "station log",
+        "source": "Aurora-12",
+        "time_window": "06:28–06:35 UTC",
+        "summary": "RECONNECT_ON_DRAINING at 06:30:14 UTC; code 1006 close; three stations within 4 seconds"
+      }
+    ],
+    "decisive_evidence": [
+      "Three stations flipped ERROR within 4 seconds of each other at 06:30 UTC",
+      "Kamailio drain log shows X-Web-Socket-Draining from site-side NTT link"
+    ],
+    "missing_or_non_decisive": [
+      "Switch/SDWAN logs not uploaded — sufficient evidence already present for fork"
+    ]
+  },
+  "fork_packet": {
+    "fork_letter": "B",
+    "confidence": "Medium",
+    "symptom_tag": "[apex]",
+    "rubric_class": "Symptom Class 3",
+    "quoted_rubric_row": "customer LAN, switch, or SDWAN. Link to site master ticket",
+    "reasoning": "Three stations flipping ERROR within 4 seconds is the Class 3 multi-station signal pointing to the customer network (Fork B). No single-station isolation. Kamailio drain correlates with site NTT link.",
+    "evidence_summary": [
+      "Stations Aurora-11, Aurora-12, Aurora-13 all hit RECONNECT_ON_DRAINING within 4s",
+      "Kamailio drain log shows site-side origination"
+    ],
+    "missing_evidence": [],
+    "runbook_reference": {
+      "slug": "apex",
+      "section": "Multiple stations at one site flip ERROR within seconds -> Fork B — customer LAN, switch, or SDWAN; link to the site master ticket."
+    },
+    "historical_matches": [
+      {
+        "ticket_id": "41675",
+        "subject": "Cobb County — all consoles Network Error",
+        "relevance": "Same multi-station RECONNECT_ON_DRAINING pattern; resolved via site master ticket",
+        "resolution": "Linked to site master; customer IT replaced switch"
+      }
+    ],
+    "related_zendesk": [41675],
+    "related_jira": []
+  },
+  "drafts": {
+    "customer_reply": "Hi team,\n\nWe reviewed the station logs for the 06:30 UTC event. The logs show three consoles simultaneously losing their WebSocket connection within 4 seconds of each other. This pattern is consistent with a brief interruption at the site network level (LAN, switch, or SDWAN) rather than a Carbyne platform issue.\n\nWe have linked this ticket to the site master ticket for your location. Could you please check with your IT team or ISP for any network events around 06:30 UTC?\n\nThank you,\nCarbyne NOC",
+    "internal_note": "Fork B — Symptom Class 3. Multi-station (3 stations within 4s). Rubric row: 'customer LAN, switch, or SDWAN. Link to site master ticket'. Linked to #41675. No Jira needed.",
+    "jira_draft": null
+  }
+}

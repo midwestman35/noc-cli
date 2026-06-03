@@ -1,0 +1,5 @@
+{
+  "this_is": "not a valid Handoff",
+  "missing": ["intake", "evidence_preflight", "fork_packet", "drafts"],
+  "rubric_version": "bad"
+}
