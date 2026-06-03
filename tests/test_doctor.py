@@ -1,13 +1,19 @@
 import os
 from pathlib import Path
 
+from rich.console import Console
+
 from noc_cli.config import Config
 from noc_cli.doctor import (
     check_claude_engine,
     check_notification_capability,
     check_tickets_dir_writable,
     check_zendesk_credentials_present,
+    check_zendesk_live_auth,
+    print_report,
+    run_checks,
 )
+from noc_cli.zendesk import ZendeskError
 
 
 def _cfg(**kwargs) -> Config:
@@ -134,3 +140,118 @@ def test_notification_fails_when_neither_present(monkeypatch):
     result = check_notification_capability()
     assert result.ok is False
     assert "not found" in result.message.lower()
+
+
+# ── run_checks + print_report integration ────────────────────────────────────
+
+
+def test_run_checks_returns_five_results(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
+    cfg = _cfg(tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    assert len(results) == 5
+    labels = [r.label for r in results]
+    assert "Zendesk credentials" in labels
+    assert "Tickets directory" in labels
+    assert "Claude Code engine" in labels
+    assert "Notification" in labels
+    assert "Zendesk live auth" in labels
+
+
+def test_run_checks_skips_live_auth_when_factory_is_none(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
+    cfg = _cfg(tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    live_auth = next(r for r in results if r.label == "Zendesk live auth")
+    assert live_auth.ok is True
+    assert "Skipped" in live_auth.message
+
+
+def test_print_report_returns_0_when_all_critical_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
+    cfg = _cfg(tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    console = Console(record=True)
+    code = print_report(results, console=console)
+    assert code == 0
+
+
+def test_print_report_returns_1_when_credentials_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
+    cfg = _cfg(zendesk_subdomain="", zendesk_email="", zendesk_api_token="", tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    console = Console(record=True)
+    code = print_report(results, console=console)
+    assert code == 1
+
+
+def test_print_report_returns_1_when_tickets_dir_not_writable(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
+    monkeypatch.setattr(os, "access", lambda path, mode: False)
+    cfg = _cfg(tickets_root=tmp_path / "unwritable")
+    results = run_checks(cfg, zd_factory=None)
+    console = Console(record=True)
+    code = print_report(results, console=console)
+    assert code == 1
+
+
+def test_print_report_returns_1_when_claude_engine_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: None)
+    cfg = _cfg(tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    console = Console(record=True)
+    code = print_report(results, console=console)
+    # notification also fails when which returns None, but the critical check
+    # is the Claude engine — exit code must be 1
+    assert code == 1
+
+
+def test_print_report_returns_0_when_only_notification_fails(tmp_path, monkeypatch):
+    # Notification is a warning, not critical — exit code must be 0.
+    def fake_which(name: str) -> str | None:
+        if name == "claude":
+            return "/usr/local/bin/claude"
+        return None  # osascript and terminal-notifier absent
+
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", fake_which)
+    cfg = _cfg(tickets_root=tmp_path)
+    results = run_checks(cfg, zd_factory=None)
+    console = Console(record=True)
+    code = print_report(results, console=console)
+    assert code == 0
+
+
+def test_check_zendesk_live_auth_returns_fail_on_auth_error():
+    def bad_factory(cfg: Config) -> object:
+        class FakeClient:
+            def get_ticket(self, _id: int) -> None:
+                raise ZendeskError("Zendesk auth failed - check ZENDESK_EMAIL and ZENDESK_API_TOKEN.")
+        return FakeClient()
+
+    result = check_zendesk_live_auth(_cfg(), zd_factory=bad_factory)
+    assert result.ok is False
+    assert "Auth rejected" in result.message
+
+
+def test_check_zendesk_live_auth_returns_ok_on_404():
+    def not_found_factory(cfg: Config) -> object:
+        class FakeClient:
+            def get_ticket(self, _id: int) -> None:
+                raise Exception("404 Not Found")
+        return FakeClient()
+
+    result = check_zendesk_live_auth(_cfg(), zd_factory=not_found_factory)
+    assert result.ok is True  # 404 means creds are valid
+    assert "network/404" in result.message
+
+
+def test_check_zendesk_live_auth_returns_ok_on_success():
+    def success_factory(cfg: Config) -> object:
+        class FakeClient:
+            def get_ticket(self, _id: int) -> object:
+                return object()  # any non-exception result
+        return FakeClient()
+
+    result = check_zendesk_live_auth(_cfg(), zd_factory=success_factory)
+    assert result.ok is True
+    assert "Authenticated" in result.message
