@@ -24,6 +24,7 @@ noc-cli = "noc_cli.cli:app"
 dev = [
     "pytest>=8",
     "pytest-httpx>=0.30",
+    "anyio>=4.0",
 ]
 
 [tool.hatch.build.targets.wheel]

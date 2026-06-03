@@ -27,6 +27,7 @@ class Ticket(BaseModel):
     description: str = ""
     requester_org: str | None = None
     requester_email: str | None = None
+    assignee_email: str | None = None   # populated on view_tickets rows; used by the watcher
     status: str = ""
     tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
