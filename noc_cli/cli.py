@@ -1,3 +1,4 @@
+"""noc-cli command-line interface — thin Typer shims over the logic modules."""
 from __future__ import annotations
 
 import shutil

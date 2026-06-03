@@ -15,19 +15,6 @@ from pathlib import Path
 from noc_cli.config import Config
 
 
-# Canonical ordering of the .env keys — matches the spec's §14 grouping.
-_ENV_KEY_ORDER = [
-    "ZENDESK_SUBDOMAIN",
-    "ZENDESK_EMAIL",
-    "ZENDESK_API_TOKEN",
-    "NOC_TICKETS_ROOT",
-    "NOC_OWNER",
-    "NOC_WATCH_VIEW",
-    "NOC_WATCH_ASSIGNEE",
-    "NOC_NOTIFY",
-]
-
-
 # Type alias for the injected prompt callable.
 # Signature: (label, default="", hide_input=False) -> str
 PromptFn = Callable[..., str]
