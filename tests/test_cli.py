@@ -125,3 +125,78 @@ def test_setup_rerun_uses_existing_values_as_defaults(tmp_path, monkeypatch):
     text = (tmp_path / ".env").read_text()
     assert "ZENDESK_API_TOKEN=tok-second" in text  # updated
     assert "ZENDESK_SUBDOMAIN=carbyne" in text      # unchanged
+
+
+def test_doctor_exits_0_when_all_critical_checks_pass(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text(
+        "ZENDESK_SUBDOMAIN=carbyne\n"
+        "ZENDESK_EMAIL=a@carbyne.com\n"
+        "ZENDESK_API_TOKEN=tok\n"
+        f"NOC_TICKETS_ROOT={tmp_path / 'Tickets'}\n"
+        "NOC_OWNER=alice\n"
+        "NOC_NOTIFY=banner,ping\n"
+    )
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/fake")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+
+
+def test_doctor_exits_1_when_credentials_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    # No .env file — all creds missing.
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/fake")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 1
+
+
+def test_doctor_output_contains_checkmarks_and_crosses(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text(
+        "ZENDESK_SUBDOMAIN=carbyne\n"
+        "ZENDESK_EMAIL=a@carbyne.com\n"
+        "ZENDESK_API_TOKEN=tok\n"
+        f"NOC_TICKETS_ROOT={tmp_path / 'Tickets'}\n"
+        "NOC_OWNER=alice\n"
+        "NOC_NOTIFY=banner,ping\n"
+    )
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/fake")
+    result = runner.invoke(app, ["doctor"])
+    # Rich markup stripped by CliRunner — look for the text labels
+    assert "Zendesk credentials" in result.output
+    assert "Tickets directory" in result.output
+    assert "Claude Code engine" in result.output
+    assert "Notification" in result.output
+
+
+def test_doctor_online_flag_skips_live_auth_when_creds_missing(tmp_path, monkeypatch):
+    # With --online the live-auth factory still runs (it is NOT skipped), but
+    # ZendeskClient raises at construction before any HTTP when creds are
+    # missing, and live-auth is advisory only. So the critical creds-present
+    # check alone drives the exit code to 1 — no network call is made.
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/fake")
+    result = runner.invoke(app, ["doctor", "--online"])
+    assert result.exit_code == 1
+
+
+def test_doctor_exits_0_when_notification_check_fails_only(tmp_path, monkeypatch):
+    # Notification is non-critical: all-critical-pass + notification-fail => exit 0.
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text(
+        "ZENDESK_SUBDOMAIN=carbyne\n"
+        "ZENDESK_EMAIL=a@carbyne.com\n"
+        "ZENDESK_API_TOKEN=tok\n"
+        f"NOC_TICKETS_ROOT={tmp_path / 'Tickets'}\n"
+        "NOC_OWNER=alice\n"
+        "NOC_NOTIFY=banner,ping\n"
+    )
+
+    def fake_which(name: str) -> str | None:
+        if name == "claude":
+            return "/usr/local/bin/claude"
+        return None  # no osascript, no terminal-notifier
+
+    monkeypatch.setattr("noc_cli.doctor.shutil.which", fake_which)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0
