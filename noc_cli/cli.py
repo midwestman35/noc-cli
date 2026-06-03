@@ -322,13 +322,68 @@ async def _run_investigate(
 
 
 @app.command()
-def watch() -> None:
-    """Watch a Zendesk queue and notify on status changes to your tickets."""
-    typer.secho(
-        "noc-cli watch is not built yet — arriving in the watch plan.",
-        fg=typer.colors.YELLOW,
-    )
-    raise typer.Exit(code=0)
+def watch(
+    view: str = typer.Option(
+        "",
+        "--view",
+        help="Zendesk view ID to poll (overrides NOC_WATCH_VIEW config).",
+    ),
+    assignee: str = typer.Option(
+        "",
+        "--assignee",
+        help="Assignee email to filter (overrides NOC_WATCH_ASSIGNEE config).",
+    ),
+    interval: int = typer.Option(
+        60,
+        "--interval",
+        min=1,
+        help="Poll interval in seconds (default 60).",
+    ),
+) -> None:
+    """Watch a Zendesk view and notify on ticket status changes / new requester comments."""
+    from noc_cli import store
+    from noc_cli.config import db_path
+    from noc_cli.tui.watch_app import WatchApp
+    from noc_cli.watch.notify import build_notifier
+    from noc_cli.watch.state import WatchState
+    from noc_cli.zendesk import ZendeskClient, ZendeskError
+
+    cfg = load_config()
+
+    # CLI flags override config values.
+    if view:
+        cfg = cfg.model_copy(update={"watch_view": view})
+    if assignee:
+        cfg = cfg.model_copy(update={"watch_assignee": assignee})
+
+    if not cfg.watch_view:
+        typer.secho(
+            "Error: no view configured. Pass --view <id> or run `noc-cli setup`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        client = ZendeskClient(cfg)
+    except ZendeskError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    conn = store.connect(db_path())
+    try:
+        ws = WatchState(conn)
+        notifier = build_notifier(cfg.notify)
+        watch_app = WatchApp(
+            config=cfg,
+            client=client,
+            watch_state=ws,
+            notifier=notifier,
+            poll_interval=interval,
+        )
+        watch_app.run()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

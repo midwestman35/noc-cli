@@ -28,12 +28,6 @@ def test_help_lists_full_command_surface():
         assert command in result.stdout
 
 
-def test_stub_command_reports_coming_soon():
-    result = runner.invoke(app, ["watch"])
-    assert result.exit_code == 0
-    assert "not built yet" in result.stdout
-
-
 def test_setup_command_writes_env_file(tmp_path, monkeypatch):
     monkeypatch.setenv("NOC_HOME", str(tmp_path))
     monkeypatch.setenv("USER", "alice")
@@ -200,3 +194,18 @@ def test_doctor_exits_0_when_notification_check_fails_only(tmp_path, monkeypatch
     monkeypatch.setattr("noc_cli.doctor.shutil.which", fake_which)
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
+
+
+def test_watch_command_exposes_flags():
+    """The watch command accepts --view, --assignee, and --interval flags."""
+    result = runner.invoke(app, ["watch", "--help"])
+    assert result.exit_code == 0
+    assert "--view" in result.stdout
+    assert "--assignee" in result.stdout
+    assert "--interval" in result.stdout
+
+
+def test_watch_command_rejects_invalid_interval():
+    """--interval must be a positive integer (min=1)."""
+    result = runner.invoke(app, ["watch", "--interval", "0"])
+    assert result.exit_code != 0
