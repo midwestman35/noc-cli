@@ -59,3 +59,9 @@ class ZendeskClient:
     def view_tickets(self, view_id: int | str) -> list[Ticket]:
         data = self._get(f"/views/{view_id}/tickets.json")
         return [Ticket.model_validate(t) for t in data.get("tickets", [])]
+
+    def download_attachment(self, url: str) -> bytes:
+        """Fetch an attachment by its content URL (read-only)."""
+        resp = self._client.get(url, headers={"Authorization": self._auth_header})
+        resp.raise_for_status()
+        return resp.content

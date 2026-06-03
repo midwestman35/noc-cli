@@ -79,3 +79,18 @@ def test_get_comments_parses_list(httpx_mock, http):
     client = ZendeskClient(make_config(), client=http)
     comments = client.get_comments(9)
     assert comments[0].body == "hi"
+
+
+def test_download_attachment_returns_bytes_and_sends_auth(httpx_mock, http):
+    """download_attachment fetches the URL with the existing auth header."""
+    httpx_mock.add_response(
+        url="https://cdn.zendesk.example/attachments/kamailio.log",
+        content=b"SIP line from Zendesk",
+    )
+    client = ZendeskClient(make_config(), client=http)
+    data = client.download_attachment(
+        "https://cdn.zendesk.example/attachments/kamailio.log"
+    )
+    assert data == b"SIP line from Zendesk"
+    request = httpx_mock.get_request()
+    assert "Authorization" in request.headers
