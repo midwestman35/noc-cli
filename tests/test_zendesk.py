@@ -94,3 +94,16 @@ def test_download_attachment_returns_bytes_and_sends_auth(httpx_mock, http):
     assert data == b"SIP line from Zendesk"
     request = httpx_mock.get_request()
     assert "Authorization" in request.headers
+
+
+def test_download_attachment_follows_zendesk_cdn_redirect(httpx_mock, http):
+    """Zendesk attachment URLs 302-redirect to a pre-signed CDN URL; the download
+    must follow the redirect rather than raising on the 3xx response."""
+    src = "https://carbyne.zendesk.com/attachments/token/abc/?name=export.txt"
+    cdn = "https://p28.zdusercontent.com/attachment/2140499/abc?token=signed"
+    httpx_mock.add_response(url=src, status_code=302, headers={"Location": cdn})
+    httpx_mock.add_response(url=cdn, content=b"export log bytes")
+
+    client = ZendeskClient(make_config(), client=http)
+    data = client.download_attachment(src)
+    assert data == b"export log bytes"
