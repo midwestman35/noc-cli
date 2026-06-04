@@ -25,7 +25,6 @@ from noc_cli.watch.inbox import (
     InboxRow,
     InboxSummary,
     build_segments,
-    humanize_when,
     render_activity,
     render_summary,
 )
@@ -88,6 +87,15 @@ def _display(value: object | None) -> str:
     if value is None or value == "":
         return "—"
     return str(value)
+
+
+def _truncate_subject(subject: str | None, *, max_len: int = 40) -> str:
+    text = (subject or "").strip()
+    if not text:
+        return "—"
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
 
 
 class ShowBanner(Message):
@@ -218,24 +226,21 @@ class TicketList(Static, can_focus=True):
     def _format_row(self, index: int, row: InboxRow) -> str:
         selector = ">" if index == self.cursor_index else " "
         triage = "✓" if row.triaged else "○"
-        fork = "in queue"
-        confidence = "—"
         owner = "—"
         status = "—"
 
         if row.summary is not None:
-            fork = _display(row.summary.fork)
-            confidence = _display(row.summary.confidence)
             owner = _display(row.summary.owner)
             status = _display(row.summary.status)
         if row.ticket is not None:
-            owner = _display(row.summary.owner if row.summary else row.ticket.assignee_email)
+            owner = _display(row.summary.owner if row.summary else None)
             status = _display(row.ticket.status)
 
-        when = humanize_when(row.when, self._now)
+        # Lead with the number and status (always visible), then the subject —
+        # the long, variable part that clips at the pane edge on narrow widths.
         return (
-            f"{selector} {triage} #{row.ticket_id:<7} "
-            f"{fork:<8} {when:<8} {confidence:<12} {owner} / {status}"
+            f"{selector} {triage} #{row.ticket_id:<7} {status:<9} "
+            f"{_truncate_subject(row.subject):<40} {owner}"
         )
 
 
@@ -289,6 +294,11 @@ class WatchApp(App[None]):
         self._row_count = 0
         self._current_detail_text = ""
         self._shipped_rubric_version = load_rubric().version
+        # "My queue" = tickets assigned to a single user. We resolve the
+        # configured assignee email (or, by default, the logged-in user) to a
+        # Zendesk user id exactly once, then filter every poll on that id.
+        self._assignee_id: int | None = None
+        self._assignee_resolved = False
 
     @property
     def selected_row(self) -> InboxRow | None:
@@ -350,12 +360,33 @@ class WatchApp(App[None]):
             parts.append(f"{_BRAILLE[self._spinner_frame]} polling...")
         banner.update(" · ".join(parts))
 
+    def _resolve_assignee_id(self) -> int | None:
+        """Resolve the "my queue" assignee to a Zendesk user id, once.
+
+        Defaults to the logged-in user (``zendesk_email``); ``watch_assignee``
+        overrides it to watch someone else's queue. On any lookup failure we
+        return ``None`` so the poll falls back to the whole view instead of an
+        empty list.
+        """
+        from noc_cli.zendesk import ZendeskError
+
+        if self._assignee_resolved:
+            return self._assignee_id
+        email = (self._config.watch_assignee or self._config.zendesk_email or "").strip()
+        try:
+            self._assignee_id = self._client.find_user_id(email) if email else None
+        except ZendeskError:
+            self._assignee_id = None
+        self._assignee_resolved = True
+        return self._assignee_id
+
     @work(exclusive=True, thread=True)
     def _run_poll(self, last_seen: dict[int, TicketSnapshot]) -> None:
         from noc_cli.zendesk import ZendeskError
 
         try:
-            tickets = poll_view(self._client, self._config.watch_view, self._config.watch_assignee)
+            assignee_id = self._resolve_assignee_id()
+            tickets = poll_view(self._client, self._config.watch_view, assignee_id)
             comments_map: dict[int, list[Comment]] = {}
             for ticket in tickets:
                 try:

@@ -34,6 +34,7 @@ class InboxRow:
     summary: InboxSummary | None = None
     ticket: Ticket | None = None
     when: datetime | None = None
+    subject: str | None = None  # live ticket subject; None for disk-only worked rows
 
 
 def build_segments(
@@ -81,6 +82,7 @@ def build_segments(
                 summary=summary,
                 ticket=ticket,
                 when=ticket.updated_at,
+                subject=ticket.subject or None,
             )
         )
 
