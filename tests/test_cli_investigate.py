@@ -71,6 +71,22 @@ def test_investigate_force_overrides_soft_lock(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
 
 
+def test_redact_skips_binary_attachment(tmp_path, monkeypatch):
+    """Binary files (e.g. PDFs) copied into logs/ must not be mangled by the redact pass."""
+    _base_env(monkeypatch, tmp_path)
+
+    # A plausible PDF: ASCII header + null bytes + high bytes (would corrupt under errors="replace")
+    binary = b"%PDF-1.4\x00\x01\x02\x03\xff\xfe\xfd\x00binary content here"
+    fake_pdf = tmp_path / "report.pdf"
+    fake_pdf.write_bytes(binary)
+
+    result = runner.invoke(app, ["investigate", "18432", "--no-agent", "--file", str(fake_pdf)])
+    assert result.exit_code == 0, result.output
+
+    written = (tmp_path / "18432" / "logs" / "report.pdf").read_bytes()
+    assert written == binary, "redact pass must not mangle binary files"
+
+
 def test_investigate_fixture_works_without_zendesk_creds(tmp_path, monkeypatch):
     # Offline fixture replay must NOT require Zendesk credentials configured.
     monkeypatch.delenv("ZENDESK_SUBDOMAIN", raising=False)

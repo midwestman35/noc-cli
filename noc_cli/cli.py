@@ -148,7 +148,7 @@ async def _run_investigate(
 
     from rich.console import Console
 
-    from noc_cli.evidence import PasteInput, gather_evidence, write_ticket_source
+    from noc_cli.evidence import PasteInput, _looks_like_text, gather_evidence, write_ticket_source
     from noc_cli.memory import InvestigationRecord, MemoryStore, append_investigation
     from noc_cli.scaffold import SoftLockConflict, preflight_soft_lock, scaffold_ticket
     from noc_cli.tui.progress import InvestigatePhase, PhaseTracker
@@ -218,7 +218,7 @@ async def _run_investigate(
     from noc_cli.redact import redact, residual_pii_warning
 
     for log_file in folder.logs.iterdir():
-        if log_file.is_file():
+        if log_file.is_file() and _looks_like_text(log_file.name):
             try:
                 text = log_file.read_text(encoding="utf-8", errors="replace")
                 redacted, counts = redact(text)
