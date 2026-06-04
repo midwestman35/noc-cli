@@ -148,7 +148,7 @@ async def _run_investigate(
 
     from rich.console import Console
 
-    from noc_cli.evidence import PasteInput, gather_evidence
+    from noc_cli.evidence import PasteInput, gather_evidence, write_ticket_source
     from noc_cli.memory import InvestigationRecord, MemoryStore, append_investigation
     from noc_cli.scaffold import SoftLockConflict, preflight_soft_lock, scaffold_ticket
     from noc_cli.tui.progress import InvestigatePhase, PhaseTracker
@@ -174,14 +174,18 @@ async def _run_investigate(
 
     # ── Fetch (skipped in --no-agent and --fixture modes) ────────────────────
     attachments: list[dict] = []
+    zd_client = None
     if fixture is None and not no_agent:
         tracker.set_phase(InvestigatePhase.FETCH)
         try:
             from noc_cli.zendesk import ZendeskClient
 
-            zd = ZendeskClient(cfg)
-            zd.get_ticket(ticket_id)
-            comments = zd.get_comments(ticket_id)
+            zd_client = ZendeskClient(cfg)
+            ticket = zd_client.get_ticket(ticket_id)
+            comments = zd_client.get_comments(ticket_id)
+            # Persist the ticket body + comments as the agent's PRIMARY input.
+            # Lands in logs/ so the redact pass below scrubs caller PII from it.
+            write_ticket_source(folder, ticket, comments)
             for comment in comments:
                 # gather_evidence expects dicts; Comment.attachments are Attachment
                 # pydantic models — convert with model_dump().
@@ -205,6 +209,7 @@ async def _run_investigate(
         zendesk_attachments=attachments,
         extra_files=extra_files,
         pastes=paste_inputs,
+        zendesk_client=zd_client,
     )
     tracker.mark_done("Evidence gathered")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,22 +35,26 @@ class RunnerResult:
     attempts: int = 0
 
 
+_JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*(.*?)\s*```", re.DOTALL)
+
+
 def _extract_json_from_result(raw: str) -> str:
-    """Best-effort extraction: strip markdown fences if present."""
+    """Best-effort extraction of the Handoff JSON from an agent reply.
+
+    The agent is told to emit only JSON, but the active output style can still
+    prepend prose / `★ Insight` blocks. Tolerate that, in order:
+      1. the contents of the first fenced ```json block anywhere in the text,
+      2. else the first '{' … last '}' span,
+      3. else the stripped text as-is.
+    """
     raw = raw.strip()
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        inner = []
-        in_block = False
-        for line in lines:
-            if line.startswith("```") and not in_block:
-                in_block = True
-                continue
-            if line.startswith("```") and in_block:
-                break
-            if in_block:
-                inner.append(line)
-        raw = "\n".join(inner).strip()
+    fenced = _JSON_FENCE_RE.search(raw)
+    if fenced:
+        return fenced.group(1).strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return raw[start : end + 1].strip()
     return raw
 
 
@@ -113,8 +118,10 @@ async def run_agent(
         f"Triage ticket #{ticket_id}.\n\n"
         f"Historical context (for historical_matches only — do not treat as ground truth):\n"
         f"{history_context}\n\n"
-        "Your working directory already contains all available evidence under logs/, "
-        "pcaps/, and analysis/. Read them and emit the Handoff JSON."
+        "The ticket body and comments are in logs/00-ticket.md. Read it and every "
+        "other file under logs/, pcaps/, and analysis/. If no evidence covers the "
+        "incident window, return Fork D and list what is missing — do not fabricate. "
+        "Emit only the Handoff JSON."
     )
 
     # Attempt 1
