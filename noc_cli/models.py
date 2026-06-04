@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Attachment(BaseModel):
@@ -71,6 +71,18 @@ class IntakeDecision(str, Enum):
     CANNOT_PROCEED = "cannot_proceed"
 
 
+# The agent sometimes invents an intake_decision string for the Fork-D / blocked
+# state (e.g. "blocked_missing_evidence"). Map the known synonyms onto the
+# canonical enum so one stray label never fails the whole handoff.
+_INTAKE_DECISION_SYNONYMS: dict[str, IntakeDecision] = {
+    "blocked_missing_evidence": IntakeDecision.CANNOT_PROCEED,
+    "blocked": IntakeDecision.CANNOT_PROCEED,
+    "pending_evidence": IntakeDecision.CANNOT_PROCEED,
+    "needs_evidence": IntakeDecision.CANNOT_PROCEED,
+    "missing_evidence": IntakeDecision.CANNOT_PROCEED,
+}
+
+
 # The approved symptom-tag set (spec §17). [vendor] is deliberately NOT here
 # (it is a history-exclusion tag, never a symptom). [unclassified] is the
 # catch-all. The agent must emit exactly one of these.
@@ -119,6 +131,31 @@ class IntakeBlock(BaseModel):
     initial_hypothesis: str = ""
     intake_decision: IntakeDecision = IntakeDecision.READY_FOR_EVIDENCE_PREFLIGHT
 
+    @field_validator("context_pulls", mode="before")
+    @classmethod
+    def _coerce_context_pulls(cls, v):
+        # The agent often emits context_pulls as plain strings rather than
+        # {pull, result, source} objects. Promote each string to ContextPull(pull=...).
+        if isinstance(v, list):
+            return [{"pull": item} if isinstance(item, str) else item for item in v]
+        return v
+
+    @field_validator("intake_decision", mode="before")
+    @classmethod
+    def _coerce_intake_decision(cls, v):
+        # Accept the canonical enum, map known synonyms, and fall back to
+        # needs_clarification for anything unrecognized — never hard-fail here.
+        if isinstance(v, IntakeDecision):
+            return v
+        if isinstance(v, str):
+            try:
+                return IntakeDecision(v)
+            except ValueError:
+                return _INTAKE_DECISION_SYNONYMS.get(
+                    v.strip().lower(), IntakeDecision.NEEDS_CLARIFICATION
+                )
+        return v
+
 
 # ─── EVIDENCE_PREFLIGHT.md ─────────────────────────────────────────────────
 
@@ -137,6 +174,16 @@ class PreflightBlock(BaseModel):
     gathered: list[GatheredEvidence] = Field(default_factory=list)
     decisive_evidence: list[str] = Field(default_factory=list)
     missing_or_non_decisive: list[str] = Field(default_factory=list)
+
+    @field_validator("gathered", mode="before")
+    @classmethod
+    def _coerce_gathered(cls, v):
+        # Like context_pulls, the agent often emits gathered as plain strings
+        # rather than {evidence_type, source, summary, ...} objects. Promote each
+        # string to GatheredEvidence(summary=...).
+        if isinstance(v, list):
+            return [{"summary": item} if isinstance(item, str) else item for item in v]
+        return v
 
 
 # ─── FORK_PACKET.md ────────────────────────────────────────────────────────
@@ -176,6 +223,15 @@ class ForkPacket(BaseModel):
     related_jira: list[str] = Field(default_factory=list)
     master_ticket: int | None = None
     cluster: str | None = None
+
+    @field_validator("historical_matches", mode="before")
+    @classmethod
+    def _coerce_historical_matches(cls, v):
+        # Same string-vs-object pattern as context_pulls / gathered: promote a
+        # bare string to HistoricalMatch(subject=...).
+        if isinstance(v, list):
+            return [{"subject": item} if isinstance(item, str) else item for item in v]
+        return v
 
     @model_validator(mode="after")
     def _check_invariants(self) -> "ForkPacket":
