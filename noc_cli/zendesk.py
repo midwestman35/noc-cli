@@ -61,7 +61,17 @@ class ZendeskClient:
         return [Ticket.model_validate(t) for t in data.get("tickets", [])]
 
     def download_attachment(self, url: str) -> bytes:
-        """Fetch an attachment by its content URL (read-only)."""
-        resp = self._client.get(url, headers={"Authorization": self._auth_header})
+        """Fetch an attachment by its content URL (read-only).
+
+        Zendesk attachment URLs 302-redirect to a pre-signed CDN host
+        (zdusercontent.com), so we must follow redirects. httpx strips the
+        Authorization header on the cross-origin hop automatically — the CDN
+        URL carries its own signed token, so that is correct.
+        """
+        resp = self._client.get(
+            url,
+            headers={"Authorization": self._auth_header},
+            follow_redirects=True,
+        )
         resp.raise_for_status()
         return resp.content
