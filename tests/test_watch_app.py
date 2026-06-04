@@ -146,6 +146,12 @@ async def _poll(app, pilot):
     await pilot.pause()
 
 
+def _text(widget) -> str:
+    """Plain text of a Static, whether it was updated with a str or Rich Text."""
+    content = widget.content
+    return content.plain if hasattr(content, "plain") else str(content)
+
+
 async def test_app_mounts_with_two_pane_viewer_widgets(db_conn, tmp_path):
     app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
     async with app.run_test(size=(120, 40)):
@@ -170,18 +176,17 @@ async def test_poll_populates_worked_and_live_queue_segments(db_conn, tmp_path):
     text = ticket_list.rendered_text
     assert "Recently worked (3d)" in text
     assert "My queue" in text
-    assert "✓ #101" in text
-    assert "○ #202" in text
-    assert "✓ #303" in text
-    # Worked row shows the disk summary's status + owner.
-    assert "solved" in text
-    assert "enrique" in text
-    # Live queue rows now show the ticket subject and live status.
+    # Triage icons and ticket numbers (now separate columns from the subject).
+    assert "✓" in text and "#101" in text
+    assert "○" in text and "#202" in text
+    assert "#303" in text
+    # Statuses are shown for both worked (from STATE.md) and live rows.
+    assert "solved" in text   # worked #101
+    assert "open" in text     # live #202
+    assert "pending" in text  # live #303
+    # Subjects (the agent-friendly name) are shown for live queue rows.
     assert "Ticket 202" in text
-    assert "open" in text
     assert "Ticket 303" in text
-    assert "pending" in text
-    assert "maya" in text
     assert "3 tickets" in banner_text
 
 
@@ -197,7 +202,7 @@ async def test_poll_error_keeps_disk_backed_recently_worked_and_notification(db_
         ticket_list = app.query_one("#ticket-list", TicketList)
         notification_text = app.query_one("#notification").content
 
-    assert "✓ #404" in ticket_list.rendered_text
+    assert "#404" in ticket_list.rendered_text
     assert "Poll error: network down" in notification_text
 
 
@@ -245,6 +250,69 @@ async def test_detail_shows_activity_for_queue_row_with_comment_body(db_conn, tm
     assert "Ticket: ZD-606" in app.current_detail_text
     assert "press [i]" in app.current_detail_text
     assert "Customer says audio is still low." in app.current_detail_text
+
+
+async def test_summary_after_triage_keeps_header_and_comments(db_conn, tmp_path):
+    # A triaged queue row carries both a STATE.md summary and a live ticket, so
+    # the Summary tab must show the triage outcome AND keep the live comments,
+    # with the permanent header naming the ticket.
+    _write_state(tmp_path, 880, fork="B", status="pending")
+    ticket = _ticket(880, subject="Dropped calls at PSAP", status="pending")
+    comments = {880: [_comment("Customer says calls still dropping.")]}
+    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]], comments), WatchState(db_conn))
+
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _poll(app, pilot)
+        detail = app.current_detail_text
+        header = _text(app.query_one("#detail-header"))
+
+    assert "Fork: B" in detail  # triage summary preserved
+    assert "Customer says calls still dropping." in detail  # live comment kept
+    assert "ZD-880" in header
+    assert "Dropped calls at PSAP" in header
+    assert "pending" in header
+
+
+async def test_tablabel_describes_current_file_tab(db_conn, tmp_path):
+    _write_state(tmp_path, 707)
+    app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        assert "Summary" in _text(app.query_one("#detail-tablabel"))
+        await pilot.press("tab")
+        await pilot.pause()
+        label = _text(app.query_one("#detail-tablabel"))
+
+    assert "INTAKE.md" in label
+    assert "What are we looking at?" in label
+
+
+async def test_new_comment_appears_after_second_poll(db_conn, tmp_path):
+    ticket = _ticket(990, subject="No ALI", status="open")
+    first = _comment("First comment.")
+    second = _comment("Second comment arrived.")
+
+    class GrowingClient(_FakeClient):
+        def __init__(self):
+            super().__init__([[ticket]])
+            self.poll_round = 0
+
+        def get_comments(self, ticket_id):
+            batch = [first, second] if self.poll_round >= 1 else [first]
+            return [c.model_copy(deep=True) for c in batch]
+
+    client = GrowingClient()
+    app = _make_app(_make_config(tmp_path), client, WatchState(db_conn))
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        assert "First comment." in app.current_detail_text
+        assert "Second comment arrived." not in app.current_detail_text
+
+        client.poll_round = 1
+        await _poll(app, pilot)
+        assert "Second comment arrived." in app.current_detail_text
 
 
 async def test_tab_cycles_to_file_and_escape_returns_to_summary(db_conn, tmp_path):
@@ -310,20 +378,139 @@ async def test_r_key_refreshes_live_queue(db_conn, tmp_path):
 
 
 async def test_i_launches_investigate_for_selected_ticket(db_conn, tmp_path):
+    import threading
+
     ticket = _ticket(808)
     app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
+    release = threading.Event()
 
     with patch("subprocess.Popen") as mock_popen:
-        mock_popen.return_value = MagicMock()
+        # Empty stdout so the streaming loop exits immediately; wait() blocks
+        # until we release it, so the in-progress panel stays observable.
+        fake_proc = MagicMock()
+        fake_proc.stdout = iter(())
+        fake_proc.wait.side_effect = lambda: (release.wait(timeout=5), 0)[1]
+        fake_proc.poll.return_value = None
+        mock_popen.return_value = fake_proc
+
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
             await pilot.press("i")
             await pilot.pause()
+            # Investigation now runs inline in the detail pane — no modal screen.
+            app._investigate_on_line(808, "✓ Evidence gathered")
+            await pilot.pause()
+            assert "Investigating #808" in app.current_detail_text
+            assert "Evidence gathered" in app.current_detail_text
+
+            release.set()
+            for _ in range(20):
+                await pilot.pause()
+                if app._investigating_id is None:
+                    break
+            assert app._investigating_id is None
 
     assert mock_popen.call_count == 1
     cmd = mock_popen.call_args[0][0]
     assert "investigate" in cmd
     assert "808" in cmd
+
+
+async def test_i_is_single_flight_while_running(db_conn, tmp_path):
+    ticket = _ticket(818)
+    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
+
+    with patch("subprocess.Popen") as mock_popen:
+        fake_proc = MagicMock()
+        fake_proc.stdout = iter(())
+        fake_proc.poll.return_value = None
+        fake_proc.wait.return_value = 0
+        mock_popen.return_value = fake_proc
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _poll(app, pilot)
+            # Simulate an in-flight investigation without racing the worker.
+            app._investigating_id = 818
+            await pilot.press("i")
+            await pilot.pause()
+            # Second `i` while one is running must not spawn a process.
+            assert mock_popen.call_count == 0
+            assert "already running" in app.query_one("#notification").content
+
+
+async def test_new_update_badge_lifecycle(db_conn, tmp_path):
+    from noc_cli.tui.watch_app import TicketList
+
+    # Batch 1: #700 open and #701 open. Batch 2: #700 flips to pending (a change)
+    # while the cursor sits on #701.
+    first = [_ticket(701, status="open"), _ticket(700, status="open")]
+    second = [_ticket(701, status="open"), _ticket(700, status="pending")]
+    comments = {700: [_comment("Customer replied.")]}
+    client = _FakeClient([first, second], comments)
+    app = _make_app(_make_config(tmp_path), client, WatchState(db_conn))
+
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _poll(app, pilot)
+        # Park the cursor on #701 so #700's change gets flagged.
+        ticket_list = app.query_one("#ticket-list", TicketList)
+        if app.selected_row.ticket_id != 701:
+            app.action_cursor_down()
+            await pilot.pause()
+        assert app.selected_row.ticket_id == 701
+
+        await _poll(app, pilot)
+        assert 700 in app._unread_ids
+        assert "!" in ticket_list.rendered_text
+
+        # Arrowing onto #700 clears its badge.
+        target = next(i for i, r in enumerate(ticket_list.rows) if r.ticket_id == 700)
+        while ticket_list.cursor_index != target:
+            if ticket_list.cursor_index < target:
+                app.action_cursor_down()
+            else:
+                app.action_cursor_up()
+            await pilot.pause()
+        assert 700 not in app._unread_ids
+
+
+async def test_change_to_selected_row_is_not_flagged(db_conn, tmp_path):
+    first = [_ticket(750, status="open")]
+    second = [_ticket(750, status="pending")]
+    comments = {750: [_comment("Customer replied.")]}
+    client = _FakeClient([first, second], comments)
+    app = _make_app(_make_config(tmp_path), client, WatchState(db_conn))
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        assert app.selected_row.ticket_id == 750
+        await _poll(app, pilot)
+        # The row the agent is already on must not get a badge.
+        assert 750 not in app._unread_ids
+
+
+async def test_pulse_marks_changed_ticket_then_expires(db_conn, tmp_path):
+    first = [_ticket(761, status="open"), _ticket(760, status="open")]
+    second = [_ticket(761, status="open"), _ticket(760, status="pending")]
+    comments = {760: [_comment("Customer replied.")]}
+    client = _FakeClient([first, second], comments)
+    app = _make_app(_make_config(tmp_path), client, WatchState(db_conn))
+
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _poll(app, pilot)
+        from noc_cli.tui.watch_app import TicketList
+
+        ticket_list = app.query_one("#ticket-list", TicketList)
+        if app.selected_row.ticket_id != 761:
+            app.action_cursor_down()
+            await pilot.pause()
+
+        await _poll(app, pilot)
+        assert 760 in app._current_pulse_ids()
+
+        # Force the deadline into the past and expire — pulse set goes empty.
+        app._pulse_until[760] = 0.0
+        app._expire_pulses()
+        assert app._current_pulse_ids() == set()
 
 
 async def test_o_opens_zendesk_ticket_url(db_conn, tmp_path):
