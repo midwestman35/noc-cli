@@ -20,6 +20,7 @@ _FIELD_ENV: dict[str, str] = {
     "watch_view": "NOC_WATCH_VIEW",
     "watch_assignee": "NOC_WATCH_ASSIGNEE",
     "notify": "NOC_NOTIFY",
+    "timezone": "NOC_TZ",
 }
 
 
@@ -103,6 +104,7 @@ class Config(BaseModel):
     watch_view: str = ""
     watch_assignee: str = ""
     notify: str = "banner,ping"
+    timezone: str = "local"  # "local" (system), "utc", or an IANA name e.g. America/New_York
 
     @property
     def zendesk_base_url(self) -> str:

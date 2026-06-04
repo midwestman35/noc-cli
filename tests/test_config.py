@@ -35,6 +35,7 @@ def test_valid_config_keys_returns_editable_field_names():
         "watch_view",
         "watch_assignee",
         "notify",
+        "timezone",
     ]
 
 
