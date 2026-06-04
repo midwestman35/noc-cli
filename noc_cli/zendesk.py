@@ -60,6 +60,25 @@ class ZendeskClient:
         data = self._get(f"/views/{view_id}/tickets.json")
         return [Ticket.model_validate(t) for t in data.get("tickets", [])]
 
+    def find_user_id(self, email: str) -> int | None:
+        """Resolve a user email to its Zendesk user id (read-only).
+
+        Used by the watcher to filter a view down to one assignee. The view
+        tickets endpoint returns ``assignee_id`` (a number), not the email, so
+        we map the configured/own email to an id once and compare on that.
+        Returns ``None`` when the email matches no user, so the caller can fall
+        back to showing the whole view rather than an empty list.
+        """
+        email = (email or "").strip()
+        if not email:
+            return None
+        data = self._get("/users/search.json", params={"query": email})
+        needle = email.lower()
+        for user in data.get("users", []):
+            if (user.get("email") or "").lower() == needle:
+                return user.get("id")
+        return None
+
     def download_attachment(self, url: str) -> bytes:
         """Fetch an attachment by its content URL (read-only).
 

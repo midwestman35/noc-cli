@@ -61,14 +61,37 @@ def test_search_filters_to_tickets(httpx_mock, http):
     assert [t.id for t in results] == [1]
 
 
-def test_view_tickets_parses_list(httpx_mock, http):
+def test_view_tickets_parses_list_including_assignee_id(httpx_mock, http):
     httpx_mock.add_response(
         url="https://carbyne.zendesk.com/api/v2/views/555/tickets.json",
-        json={"tickets": [{"id": 7, "status": "pending"}]},
+        json={"tickets": [{"id": 7, "status": "pending", "assignee_id": 4242}]},
     )
     client = ZendeskClient(make_config(), client=http)
     tickets = client.view_tickets(555)
     assert tickets[0].status == "pending"
+    assert tickets[0].assignee_id == 4242
+
+
+def test_find_user_id_resolves_email_to_id(httpx_mock, http):
+    httpx_mock.add_response(
+        json={"users": [{"id": 555, "email": "agent@x.com"}]},
+    )
+    client = ZendeskClient(make_config(), client=http)
+    assert client.find_user_id("agent@x.com") == 555
+    request = httpx_mock.get_request()
+    assert "users/search.json" in str(request.url)
+
+
+def test_find_user_id_returns_none_when_no_exact_match(httpx_mock, http):
+    # Zendesk search can return near-matches; we only accept an exact email.
+    httpx_mock.add_response(json={"users": [{"id": 1, "email": "agent2@x.com"}]})
+    client = ZendeskClient(make_config(), client=http)
+    assert client.find_user_id("agent@x.com") is None
+
+
+def test_find_user_id_returns_none_for_blank_email_without_calling_api(http):
+    client = ZendeskClient(make_config(), client=http)
+    assert client.find_user_id("") is None
 
 
 def test_get_comments_parses_list(httpx_mock, http):

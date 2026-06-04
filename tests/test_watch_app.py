@@ -40,12 +40,13 @@ def _ticket(
     subject: str | None = None,
     updated_at: datetime | None = None,
     requester_id: int | None = 777,
+    assignee_id: int | None = 42,
 ) -> Ticket:
     return Ticket(
         id=tid,
         subject=subject or f"Ticket {tid}",
         status=status,
-        assignee_email="agent@x.com",
+        assignee_id=assignee_id,
         requester_email="requester@example.com",
         requester_org="City PSAP",
         requester_id=requester_id,
@@ -107,9 +108,15 @@ def db_conn(tmp_path):
 
 
 class _FakeClient:
-    def __init__(self, batches=None, comments=None):
+    def __init__(self, batches=None, comments=None, assignee_id=42):
         self._batches = list(batches or [[]])
         self._comments = comments or {}
+        self._assignee_id = assignee_id
+
+    def find_user_id(self, email):
+        # The watcher resolves the configured assignee email to a user id; the
+        # fixture tickets default to id 42 so they survive the "my queue" filter.
+        return self._assignee_id
 
     def view_tickets(self, view_id):
         batch = self._batches.pop(0) if len(self._batches) > 1 else self._batches[0]
@@ -166,9 +173,15 @@ async def test_poll_populates_worked_and_live_queue_segments(db_conn, tmp_path):
     assert "✓ #101" in text
     assert "○ #202" in text
     assert "✓ #303" in text
-    assert "enrique / solved" in text
-    assert "agent@x.com / open" in text
-    assert "maya / pending" in text
+    # Worked row shows the disk summary's status + owner.
+    assert "solved" in text
+    assert "enrique" in text
+    # Live queue rows now show the ticket subject and live status.
+    assert "Ticket 202" in text
+    assert "open" in text
+    assert "Ticket 303" in text
+    assert "pending" in text
+    assert "maya" in text
     assert "3 tickets" in banner_text
 
 
