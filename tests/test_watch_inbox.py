@@ -6,10 +6,14 @@ from pathlib import Path
 from noc_cli.models import Comment, Ticket
 from noc_cli.watch.inbox import (
     InboxSummary,
+    _format_timestamp,
     build_segments,
     humanize_when,
     render_activity,
+    render_comments,
     render_summary,
+    render_ticket_header,
+    resolve_display_tz,
 )
 
 
@@ -106,6 +110,21 @@ def test_build_segments_preserves_live_order_and_badges_queue_from_any_age_disk_
     assert queue[1].when == live[1].updated_at
 
 
+def test_format_timestamp_renders_12hour_in_utc_and_a_fixed_offset_zone():
+    dt = datetime(2026, 6, 4, 13, 30, tzinfo=timezone.utc)
+    # UTC keeps the wall-clock time, rendered as 12-hour with AM/PM.
+    assert _format_timestamp(dt, resolve_display_tz("utc")) == "2026-06-04 1:30 PM"
+    # A fixed -05:00 zone shifts the displayed time deterministically.
+    assert _format_timestamp(dt, timezone(timedelta(hours=-5))) == "2026-06-04 8:30 AM"
+
+
+def test_resolve_display_tz_blank_and_local_mean_system_local():
+    assert resolve_display_tz("") is None
+    assert resolve_display_tz("local") is None
+    assert resolve_display_tz(None) is None
+    assert resolve_display_tz("utc") is timezone.utc
+
+
 def test_humanize_when_formats_empty_recent_minutes_hours_and_days():
     assert humanize_when(None, NOW) == "—"
     assert humanize_when(NOW - timedelta(seconds=30), NOW) == "just now"
@@ -175,28 +194,18 @@ def test_render_summary_uses_none_fallbacks_without_mismatch_when_versions_match
     assert "Cluster: (none)" in rendered
 
 
-def test_render_activity_lists_ticket_fields_and_comments_newest_first_with_markers_and_authors():
+def test_render_activity_lists_ticket_fields_only_no_longer_lists_comments():
     older = Comment(
         id=10,
         author_id=111,
         public=True,
-        body="Public customer reply\nwith a second line",
+        body="Public customer reply",
         created_at=datetime(2026, 6, 4, 9, 15, tzinfo=timezone.utc),
     )
-    newer = Comment(
-        id=11,
-        author_id=None,
-        public=False,
-        body=(
-            "Internal note with enough words to demonstrate that the one-line "
-            "body is shortened before display to keep the pane readable."
-        ),
-        created_at=datetime(2026, 6, 4, 10, 30, tzinfo=timezone.utc),
-    )
     ticket = _ticket(500, subject="Phone registration trouble", status="pending")
-    ticket.comments = [older, newer]
+    ticket.comments = [older]
 
-    rendered = render_activity(ticket)
+    rendered = render_activity(ticket, tz="utc")
 
     assert "Ticket: ZD-500" in rendered
     assert "Subject: Phone registration trouble" in rendered
@@ -204,8 +213,78 @@ def test_render_activity_lists_ticket_fields_and_comments_newest_first_with_mark
     assert "Organization: City PSAP" in rendered
     assert "Status: pending" in rendered
     assert "Not yet investigated — press [i] to investigate." in rendered
-    assert rendered.index("[internal]") < rendered.index("[public]")
-    assert "[internal] 2026-06-04 10:30 UTC author unknown:" in rendered
-    assert "[public] 2026-06-04 09:15 UTC author #111: Public customer reply with a second line" in rendered
-    assert "\nwith a second line" not in rendered
-    assert "..." in rendered
+    # Comments are now rendered separately by render_comments (color-coded), so
+    # render_activity no longer lists them.
+    assert "Latest comments" not in rendered
+    assert "Public customer reply" not in rendered
+
+
+def test_render_comments_orders_oldest_first_with_role_labels_and_12h_timestamps():
+    older = Comment(
+        id=10,
+        author_id=777,  # the requester → customer
+        public=True,
+        body="[older body] customer reply",
+        created_at=datetime(2026, 6, 4, 9, 15, tzinfo=timezone.utc),
+    )
+    middle = Comment(
+        id=11,
+        author_id=42,  # a different author, public → us / agent
+        public=True,
+        body="[middle body] agent public reply",
+        created_at=datetime(2026, 6, 4, 13, 30, tzinfo=timezone.utc),
+    )
+    newer = Comment(
+        id=12,
+        author_id=None,
+        public=False,  # internal note
+        body="[newer body] internal note",
+        created_at=datetime(2026, 6, 4, 14, 45, tzinfo=timezone.utc),
+    )
+    ticket = _ticket(500, subject="Phone registration trouble", status="pending")
+    ticket.requester_id = 777
+    ticket.comments = [newer, older, middle]  # unsorted on input
+
+    # Pin tz=utc so the assertions are deterministic regardless of the test
+    # machine's local zone (production defaults to "local").
+    rendered = render_comments(ticket, tz="utc")
+    plain = rendered.plain
+
+    assert plain.startswith("Latest comments:")
+    # Oldest at top, newest at bottom.
+    assert plain.index("[older body]") < plain.index("[middle body]") < plain.index("[newer body]")
+    # Role labels keyed off public / requester_id.
+    assert "[customer]" in plain  # requester, public
+    assert "[agent]" in plain     # other author, public
+    assert "[internal]" in plain  # not public
+    # 12-hour clock, no leading zero, no 24-hour leak.
+    assert "1:30 PM" in plain and "13:30" not in plain
+    # Role styles are carried on the Text spans.
+    styles = {str(span.style) for span in rendered.spans}
+    assert "blue" in styles                       # customer
+    assert "white" in styles                      # agent
+    assert "black on rgb(181,137,0)" in styles    # internal note
+
+
+def test_render_comments_handles_empty_thread():
+    ticket = _ticket(501)
+    ticket.comments = []
+    rendered = render_comments(ticket, tz="utc")
+    assert rendered.plain == "Latest comments:\n  (none)"
+
+
+def test_render_ticket_header_contains_id_subject_and_status():
+    rendered = render_ticket_header(
+        ticket_id=606, subject="Low audio report", status="open"
+    )
+    plain = rendered.plain
+    assert "ZD-606" in plain
+    assert "Low audio report" in plain
+    assert "open" in plain
+
+
+def test_render_ticket_header_omits_subject_when_none():
+    rendered = render_ticket_header(ticket_id=707, subject=None, status="pending")
+    plain = rendered.plain
+    assert "ZD-707" in plain
+    assert "pending" in plain

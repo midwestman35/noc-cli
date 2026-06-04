@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
+import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
@@ -22,17 +25,32 @@ from noc_cli.rubric import load_rubric
 from noc_cli.watch.diff import ChangeEvent, ChangeKind, _iso, _latest_public_comment, diff_tickets
 from noc_cli.watch.disk_scan import scan_investigations
 from noc_cli.watch.inbox import (
+    INVESTIGATE_PHASES,
     InboxRow,
     InboxSummary,
     build_segments,
+    detect_phase,
+    humanize_when,
     render_activity,
+    render_comments,
     render_summary,
+    render_ticket_header,
+    resolve_display_tz,
 )
 from noc_cli.watch.notify import Notifier
 from noc_cli.watch.poller import poll_view
 from noc_cli.watch.state import TicketSnapshot, WatchState
 
 _BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+# Rich/Textual subprocess output can carry SGR colour codes and carriage-return
+# spinner frames; we strip both before showing piped lines in the detail pane.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
 _DETAIL_MODES = [
     "Summary",
     "INTAKE.md",
@@ -41,6 +59,16 @@ _DETAIL_MODES = [
     "DRAFTS.md",
     "STATE.md",
 ]
+
+# Per-file taglines shown under the permanent header so each tab names not just
+# the file but what question it answers.
+_TAB_TAGLINES = {
+    "INTAKE.md": "What are we looking at?",
+    "EVIDENCE_PREFLIGHT.md": "Do we have proof?",
+    "FORK_PACKET.md": "The decision",
+    "DRAFTS.md": "Ready-to-paste comms",
+    "STATE.md": "Persisted state + soft-lock",
+}
 
 _CSS = """
 Screen { layout: vertical; }
@@ -69,13 +97,26 @@ Screen { layout: vertical; }
     padding: 0 1;
 }
 #ticket-list:focus { border: heavy $accent; }
-#detail {
+#detail-pane {
     width: 55%;
     height: 1fr;
+    layout: vertical;
     border: solid $accent;
     padding: 0 1;
 }
-#detail:focus { border: heavy $accent; }
+#detail-pane:focus-within { border: heavy $accent; }
+#detail-header {
+    height: auto;
+    text-style: bold;
+}
+#detail-tablabel {
+    height: 1;
+    color: $text-muted;
+}
+#detail {
+    width: 1fr;
+    height: 1fr;
+}
 #detail-content {
     width: 1fr;
     height: auto;
@@ -89,13 +130,20 @@ def _display(value: object | None) -> str:
     return str(value)
 
 
-def _truncate_subject(subject: str | None, *, max_len: int = 40) -> str:
-    text = (subject or "").strip()
-    if not text:
-        return "—"
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 1].rstrip() + "…"
+# Status → Rich style, so the queue is scannable by color at a glance.
+_STATUS_STYLES = {
+    "new": "blue",
+    "open": "cyan",
+    "pending": "yellow",
+    "hold": "magenta",
+    "on-hold": "magenta",
+    "solved": "green",
+    "closed": "green",
+}
+
+
+def _status_style(status: str | None) -> str:
+    return _STATUS_STYLES.get((status or "").strip().lower(), "white")
 
 
 class ShowBanner(Message):
@@ -135,6 +183,10 @@ class TicketList(Static, can_focus=True):
         self._now = datetime.now(tz=timezone.utc)
         self.cursor_index = 0
         self.rendered_text = ""
+        # Session-scoped decorations: ticket ids with an unseen update (the `!`
+        # badge) and ids currently mid-pulse. Kept in-memory only.
+        self._unread_ids: set[int] = set()
+        self._pulse_ids: set[int] = set()
 
     @property
     def rows(self) -> list[InboxRow]:
@@ -164,6 +216,8 @@ class TicketList(Static, can_focus=True):
         *,
         now: datetime,
         preferred_ticket_id: int | None,
+        unread_ids: set[int] | None = None,
+        pulse_ids: set[int] | None = None,
     ) -> bool:
         previous_id = self.selected_ticket_id
         if preferred_ticket_id is None:
@@ -173,6 +227,10 @@ class TicketList(Static, can_focus=True):
         self._worked_count = len(worked)
         self._queue_count = len(queue)
         self._now = now
+        if unread_ids is not None:
+            self._unread_ids = set(unread_ids)
+        if pulse_ids is not None:
+            self._pulse_ids = set(pulse_ids)
 
         if not self._rows:
             self.cursor_index = 0
@@ -190,6 +248,19 @@ class TicketList(Static, can_focus=True):
         self._render_rows()
         return previous_id != self.selected_ticket_id
 
+    def update_decorations(
+        self, unread_ids: set[int], pulse_ids: set[int]
+    ) -> None:
+        """Repaint badge/pulse state without re-scanning disk or live tickets.
+
+        Used for pulse expiry and clear-on-select, where the rows themselves are
+        unchanged but their `!`/pulse styling needs to refresh.
+        """
+        self._unread_ids = set(unread_ids)
+        self._pulse_ids = set(pulse_ids)
+        if self._rows:
+            self._render_rows()
+
     def move_up(self) -> bool:
         if not self._rows or self.cursor_index <= 0:
             return False
@@ -204,44 +275,82 @@ class TicketList(Static, can_focus=True):
         self._render_rows()
         return True
 
+    # Each row is two logical lines: a title line ("#id subject", which wraps to
+    # the pane width) and an indented metadata line (age). The colored status
+    # sits just before the ✓/○ icon, padded to a fixed width so every title
+    # starts at the same column. The meta line is indented to align under the
+    # title, past the
+    # "▸ "(2) + "! "(2) + status(_STATUS_W) + "✓ "(2) prefix.
+    _STATUS_W = 8
+    _META_INDENT = " " * (2 + 2 + _STATUS_W + 2)
+
     def _render_rows(self) -> None:
-        lines = [
-            "Recently worked (3d)",
-            *self._segment_lines(0, self._worked_count),
-            "",
-            "My queue",
-            *self._segment_lines(self._worked_count, self._queue_count),
-        ]
-        self.rendered_text = "\n".join(lines)
-        self.update(self.rendered_text)
+        text = Text()
+        text.append("Recently worked (3d)\n", style="bold")
+        self._append_segment(text, 0, self._worked_count)
+        text.append("\n")
+        text.append("My queue", style="bold")
+        if self._queue_count:
+            text.append(f" · {self._queue_count}", style="dim")
+        text.append("\n")
+        self._append_segment(text, self._worked_count, self._queue_count)
+        self.rendered_text = text.plain
+        self.update(text)
 
-    def _segment_lines(self, start: int, count: int) -> list[str]:
+    def _append_segment(self, text: Text, start: int, count: int) -> None:
         if count == 0:
-            return ["  (none)"]
-        return [
-            self._format_row(index, row)
-            for index, row in enumerate(self._rows[start : start + count], start=start)
-        ]
+            text.append("  (none)\n", style="dim")
+            return
+        for index in range(start, start + count):
+            self._append_row(text, index, self._rows[index])
+            text.append("\n")
 
-    def _format_row(self, index: int, row: InboxRow) -> str:
-        selector = ">" if index == self.cursor_index else " "
-        triage = "✓" if row.triaged else "○"
-        owner = "—"
-        status = "—"
+    def _append_row(self, text: Text, index: int, row: InboxRow) -> None:
+        selected = index == self.cursor_index
+        unread = row.ticket_id in self._unread_ids
+        pulsing = row.ticket_id in self._pulse_ids
+        icon, icon_style = ("✓", "green") if row.triaged else ("○", "dim")
+        status = self._row_status(row)
+        age = humanize_when(row.when, self._now)
+        subject = (row.subject or "").strip()
+        # Ticket number folded into the title so the row reads like a subject
+        # line; the standalone #id column is gone. The full subject wraps to the
+        # pane width rather than truncating.
+        title = f"#{row.ticket_id} {subject}".rstrip()
 
-        if row.summary is not None:
-            owner = _display(row.summary.owner)
-            status = _display(row.summary.status)
+        line = Text()
+        line.append("▸ " if selected else "  ")
+        # Persistent "new update" badge — stays until the row is opened. Kept in
+        # text.plain (not just styling) so tests can assert on it.
+        line.append("! " if unread else "  ", style="bold yellow" if unread else "")
+        # Status leads the title (color-coded, padded so titles align).
+        line.append(f"{status:<{self._STATUS_W}}", style=_status_style(status))
+        line.append(f"{icon} ", style=icon_style)
+        line.append(title, style="bold" if selected else "")
+        line.append("\n")
+        line.append(self._META_INDENT)
+        line.append(age, style="dim")
+        # Selected styling wins; otherwise a mid-pulse row flashes, and an unread
+        # row gets a subtle steady tint so it reads as "needs a look".
+        if selected:
+            line.stylize("on grey23")
+        elif pulsing:
+            line.stylize("on yellow")
+        elif unread:
+            line.stylize("on grey15")
+        text.append_text(line)
+
+    def _row_status(self, row: InboxRow) -> str:
         if row.ticket is not None:
-            owner = _display(row.summary.owner if row.summary else None)
-            status = _display(row.ticket.status)
+            return row.ticket.status or "—"
+        if row.summary is not None:
+            return _display(row.summary.status)
+        return "—"
 
-        # Lead with the number and status (always visible), then the subject —
-        # the long, variable part that clips at the pane edge on narrow widths.
-        return (
-            f"{selector} {triage} #{row.ticket_id:<7} {status:<9} "
-            f"{_truncate_subject(row.subject):<40} {owner}"
-        )
+    def on_resize(self, event) -> None:
+        # Reflow the subject column to the new pane width.
+        if self._rows:
+            self._render_rows()
 
 
 class DetailPane(VerticalScroll, can_focus=True):
@@ -299,6 +408,22 @@ class WatchApp(App[None]):
         # Zendesk user id exactly once, then filter every poll on that id.
         self._assignee_id: int | None = None
         self._assignee_resolved = False
+        # Inline investigate state (replaces the old modal). Only one runs at a
+        # time; we gate concurrency on `_investigating_id` rather than a worker
+        # group so the poll worker can keep refreshing the queue alongside it.
+        self._investigating_id: int | None = None
+        self._investigate_lines: list[str] = []
+        self._investigate_phases: dict[str, bool] = {}
+        self._investigate_proc: subprocess.Popen | None = None
+        self._investigate_error: tuple[int, str] | None = None
+        # New-update decorations (session-only): ids with an unseen change, and
+        # per-id pulse deadlines (monotonic seconds).
+        self._unread_ids: set[int] = set()
+        self._pulse_until: dict[int, float] = {}
+        self._pulse_timer = None
+        # Toggles each pulse repaint so the highlight blinks a few times before
+        # settling to just the steady `!` badge.
+        self._pulse_phase = False
 
     @property
     def selected_row(self) -> InboxRow | None:
@@ -316,8 +441,13 @@ class WatchApp(App[None]):
         yield Static("", id="notification", markup=False)
         with Horizontal(id="body"):
             yield TicketList(id="ticket-list")
-            with DetailPane(id="detail"):
-                yield Static("", id="detail-content", markup=False)
+            with Vertical(id="detail-pane"):
+                # Permanent header + descriptive tab label sit outside the
+                # scroll so they stay put on every tab and during investigate.
+                yield Static("", id="detail-header", markup=False)
+                yield Static("", id="detail-tablabel", markup=False)
+                with DetailPane(id="detail"):
+                    yield Static("", id="detail-content", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -330,9 +460,13 @@ class WatchApp(App[None]):
         self.set_interval(0.1, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
-        if self._polling:
+        busy = self._polling or self._investigating_id is not None
+        if busy:
             self._spinner_frame = (self._spinner_frame + 1) % len(_BRAILLE)
-            self._update_banner()
+            if self._polling:
+                self._update_banner()
+            if self._selected_is_investigating():
+                self._refresh_detail()
 
     def _tickets_root(self) -> Path:
         override = os.environ.get("NOC_TICKETS_ROOT")
@@ -416,7 +550,12 @@ class WatchApp(App[None]):
 
     def on_poll_complete(self, message: PollComplete) -> None:
         self._polling = False
-        self._last_poll = datetime.now(tz=timezone.utc).strftime("%H:%M:%S UTC")
+        self._last_poll = (
+            datetime.now(tz=timezone.utc)
+            .astimezone(resolve_display_tz(self._config.timezone))
+            .strftime("%I:%M:%S %p")
+            .lstrip("0")
+        )
 
         if message.error:
             self._set_notification(f"Poll error: {message.error[:120]}", sticky=True)
@@ -427,12 +566,20 @@ class WatchApp(App[None]):
             self._watch_state.seed_if_absent(tid, snap)
         for tid, snap in message.snapshots.items():
             self._watch_state.save(tid, snap)
+        selected_id = self.query_one("#ticket-list", TicketList).selected_ticket_id
+        now_mono = time.monotonic()
         for evt in message.events:
             self._notifier.notify(evt)
             self.post_message(ShowBanner(event=evt))
+            self._unread_ids.add(evt.ticket_id)
+            self._pulse_until[evt.ticket_id] = now_mono + 2.5
+        # Don't flag the row the agent is already looking at.
+        if selected_id is not None:
+            self._unread_ids.discard(selected_id)
 
         self._current_tickets = message.tickets or []
         self._rebuild_rows(self._current_tickets)
+        self._schedule_pulse_clear()
 
     def _rebuild_rows(self, live_tickets: list[Ticket]) -> None:
         ticket_list = self.query_one("#ticket-list", TicketList)
@@ -444,6 +591,8 @@ class WatchApp(App[None]):
             queue,
             now=now,
             preferred_ticket_id=previous_id,
+            unread_ids=self._unread_ids,
+            pulse_ids=self._current_pulse_ids(),
         )
         self._row_count = ticket_list.row_count
         self._update_banner()
@@ -453,29 +602,138 @@ class WatchApp(App[None]):
         if reset_mode:
             self._detail_index = 0
 
+        # The permanent header tracks the selected ticket on every path —
+        # including mid-investigate and the error state.
+        self._update_detail_header()
+
+        # Live investigation takes over the detail pane while it runs; navigate
+        # away and the gate falls through to the normal detail, back and the
+        # live panel re-renders from the buffer.
+        if self._selected_is_investigating():
+            self._set_detail_text(self._render_investigate_panel())
+            self._update_tablabel()
+            return
+
         row = self.selected_row
+        if (
+            self._investigate_error is not None
+            and row is not None
+            and row.ticket_id == self._investigate_error[0]
+        ):
+            rc, msg = self._investigate_error
+            self._set_detail_text(
+                f"✗ Investigation of #{row.ticket_id} failed ({msg}).\n\n"
+                "Press [i] to retry, or check the terminal for details."
+            )
+            self._update_tablabel()
+            return
+
         if row is None:
             self._set_detail_text("No tickets to display.")
+            self._update_tablabel()
             return
 
-        if row.summary is not None:
-            if self._detail_index == 0:
-                text = render_summary(
-                    row.summary,
-                    shipped_version=self._shipped_rubric_version,
+        # Summary tab (index 0): triage outcome when investigated, otherwise the
+        # live activity fields — then the color-coded comment thread underneath.
+        if self._detail_index == 0:
+            text = Text()
+            if row.summary is not None:
+                text.append(
+                    render_summary(
+                        row.summary, shipped_version=self._shipped_rubric_version
+                    )
                 )
+            elif row.ticket is not None:
+                text.append(render_activity(row.ticket, tz=self._config.timezone))
             else:
-                text = self._read_detail_file(row.summary, _DETAIL_MODES[self._detail_index])
+                text.append(f"Ticket: ZD-{row.ticket_id}\n\nNo live activity available.")
+            # Comments are live: poll_view re-fetches ticket.comments each cycle
+            # and _rebuild_rows calls back into here, so a new comment repaints
+            # the thread (newest at the bottom) and the header status with no
+            # extra wiring.
+            if row.ticket is not None:
+                text.append("\n\n")
+                text.append_text(render_comments(row.ticket, tz=self._config.timezone))
             self._set_detail_text(text)
+            self._update_tablabel()
             return
 
-        if row.ticket is not None:
-            self._detail_index = 0
-            self._set_detail_text(render_activity(row.ticket))
+        # File tabs (1–5): raw file text, untouched. Only reachable on triaged
+        # rows (the tab actions guard on row.summary), but fall back defensively.
+        if row.summary is not None:
+            self._set_detail_text(
+                self._read_detail_file(row.summary, _DETAIL_MODES[self._detail_index])
+            )
+            self._update_tablabel()
             return
 
         self._detail_index = 0
-        self._set_detail_text(f"Ticket: ZD-{row.ticket_id}\n\nNo live activity available.")
+        self._refresh_detail()
+
+    def _update_detail_header(self) -> None:
+        """Repaint the permanent ``ZD-… · subject · status`` header."""
+        try:
+            header = self.query_one("#detail-header", Static)
+        except NoMatches:
+            return
+
+        ticket_id: int | None = None
+        subject: str | None = None
+        status: str | None = None
+
+        row = self.selected_row
+        if row is not None:
+            ticket_id = row.ticket_id
+            if row.ticket is not None:
+                subject = row.ticket.subject or None
+                status = row.ticket.status or None
+            elif row.summary is not None:
+                # Disk-only worked rows have no live subject (row.subject is None).
+                subject = row.subject
+                status = row.summary.status
+        elif self._investigating_id is not None:
+            ticket_id = self._investigating_id
+            ticket = next(
+                (t for t in self._current_tickets if t.id == self._investigating_id),
+                None,
+            )
+            if ticket is not None:
+                subject = ticket.subject or None
+                status = ticket.status or None
+
+        if ticket_id is None:
+            header.update("No ticket selected")
+            return
+        header.update(
+            render_ticket_header(ticket_id=ticket_id, subject=subject, status=status)
+        )
+
+    def _update_tablabel(self) -> None:
+        """Repaint the descriptive tab label naming the current view + purpose."""
+        try:
+            label = self.query_one("#detail-tablabel", Static)
+        except NoMatches:
+            return
+
+        if self._selected_is_investigating():
+            label.update("Live investigation")
+            return
+
+        row = self.selected_row
+        if row is None:
+            label.update("")
+            return
+
+        if self._detail_index == 0:
+            if row.summary is not None:
+                label.update("Summary — triage outcome")
+            else:
+                label.update("Activity — latest from the requester")
+            return
+
+        name = _DETAIL_MODES[self._detail_index]
+        tagline = _TAB_TAGLINES.get(name, "")
+        label.update(f"{name} — {tagline}" if tagline else name)
 
     def _read_detail_file(self, summary: InboxSummary, filename: str) -> str:
         if summary.folder is None:
@@ -488,10 +746,16 @@ class WatchApp(App[None]):
             pass
         return f"({filename} not generated)"
 
-    def _set_detail_text(self, text: str) -> None:
-        self._current_detail_text = text
+    def _set_detail_text(self, content: str | Text) -> None:
+        # A Rich Text can carry colors (e.g. the comment thread); we display it
+        # styled but keep `.plain` as the copy text so the y-copy contract and
+        # substring assertions stay on plain text.
+        if isinstance(content, Text):
+            self._current_detail_text = content.plain
+        else:
+            self._current_detail_text = content
         try:
-            self.query_one("#detail-content", Static).update(text)
+            self.query_one("#detail-content", Static).update(content)
         except NoMatches:
             pass
 
@@ -535,13 +799,78 @@ class WatchApp(App[None]):
         moved = self.query_one("#ticket-list", TicketList).move_up()
         if moved:
             self._detail_index = 0
+            self._acknowledge_selection()
             self._refresh_detail()
 
     def action_cursor_down(self) -> None:
         moved = self.query_one("#ticket-list", TicketList).move_down()
         if moved:
             self._detail_index = 0
+            self._acknowledge_selection()
             self._refresh_detail()
+
+    def _acknowledge_selection(self) -> None:
+        """Clear the `!` badge on the row the cursor just landed on."""
+        ticket_list = self.query_one("#ticket-list", TicketList)
+        selected_id = ticket_list.selected_ticket_id
+        if selected_id is not None and selected_id in self._unread_ids:
+            self._unread_ids.discard(selected_id)
+            self._repaint_decorations()
+
+    def _repaint_decorations(self) -> None:
+        try:
+            ticket_list = self.query_one("#ticket-list", TicketList)
+        except NoMatches:
+            return
+        ticket_list.update_decorations(self._unread_ids, self._current_pulse_ids())
+
+    def _current_pulse_ids(self) -> set[int]:
+        """Ids whose pulse window has not yet elapsed (phase-independent)."""
+        now_mono = time.monotonic()
+        return {tid for tid, deadline in self._pulse_until.items() if deadline > now_mono}
+
+    def _schedule_pulse_clear(self) -> None:
+        # Tradeoff: the whole list is one Static / one Text, so a pulse is a
+        # binary on/off tint toggled by this timer's re-renders — not a smooth
+        # per-row fade. A true tween would require converting each row to its own
+        # widget (a large rendering refactor), which we've deferred.
+        if self._pulse_timer is not None:
+            self._pulse_timer.stop()
+            self._pulse_timer = None
+        if not self._current_pulse_ids():
+            return
+        # Blink on a short repeating tick so the highlight flashes a few times,
+        # then `_expire_pulses` stops it and the steady `!` badge remains.
+        self._pulse_timer = self.set_interval(0.4, self._expire_pulses)
+
+    def _expire_pulses(self) -> None:
+        live = self._current_pulse_ids()
+        # Drop anything past its deadline so the dict doesn't grow unbounded.
+        for tid in [tid for tid in self._pulse_until if tid not in live]:
+            self._pulse_until.pop(tid, None)
+        if not live:
+            if self._pulse_timer is not None:
+                self._pulse_timer.stop()
+                self._pulse_timer = None
+            self._pulse_phase = False
+            self._repaint_decorations()
+            return
+        # Toggle the flash: on even ticks show the pulse tint, on odd ticks show
+        # only the steady badge — a few blinks before the window elapses.
+        self._pulse_phase = not self._pulse_phase
+        ticket_list = self.query_one("#ticket-list", TicketList)
+        ticket_list.update_decorations(
+            self._unread_ids, live if self._pulse_phase else set()
+        )
+
+    def on_unmount(self) -> None:
+        # Don't orphan a still-running child when the agent quits.
+        proc = self._investigate_proc
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
 
     def action_focus_detail(self) -> None:
         self.query_one("#detail", DetailPane).focus()
@@ -550,13 +879,100 @@ class WatchApp(App[None]):
         row = self.selected_row
         if row is None:
             return
-        subprocess.Popen(
-            [sys.executable, "-m", "noc_cli.cli", "investigate", str(row.ticket_id)],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        if self._investigating_id is not None:
+            self._set_notification("An investigation is already running.")
+            return
+        tid = row.ticket_id
+        self._investigating_id = tid
+        self._investigate_lines = []
+        self._investigate_phases = {label: False for _sub, label in INVESTIGATE_PHASES}
+        self._investigate_error = None
+        # Looking at it now clears any pending badge.
+        self._unread_ids.discard(tid)
+        self._refresh_detail()
+        self._run_investigate(tid)
+
+    @work(thread=True, exclusive=False)
+    def _run_investigate(self, ticket_id: int) -> None:
+        """Run `investigate <id> --verbose` as a child process, streaming lines.
+
+        Non-exclusive on purpose: the poll worker is its own exclusive group, so
+        the queue can still refresh while this runs. Concurrency of multiple
+        investigations is gated by `_investigating_id` in `action_investigate`.
+        """
+        env = {**os.environ, "PYTHONUTF8": "1"}
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "noc_cli.cli", "investigate",
+                 str(ticket_id), "--verbose"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+        except Exception as exc:  # pragma: no cover - spawn failure is rare
+            self.app.call_from_thread(self._investigate_failed, ticket_id, str(exc))
+            return
+
+        self._investigate_proc = proc
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                self.app.call_from_thread(
+                    self._investigate_on_line, ticket_id, line.rstrip("\n")
+                )
+        rc = proc.wait()
+        self.app.call_from_thread(self._investigate_finished, ticket_id, rc)
+
+    def _investigate_on_line(self, ticket_id: int, line: str) -> None:
+        if self._investigating_id != ticket_id:
+            return
+        # `set_phase` emits carriage-return spinner frames; keep only the last
+        # segment, then strip any leftover SGR colour codes.
+        segment = _strip_ansi(line.split("\r")[-1])
+        self._investigate_lines.append(segment)
+        label = detect_phase(segment)
+        if label is not None and label in self._investigate_phases:
+            self._investigate_phases[label] = True
+        if self._selected_is_investigating():
+            self._refresh_detail()
+
+    def _investigate_finished(self, ticket_id: int, rc: int) -> None:
+        self._investigate_proc = None
+        self._investigating_id = None
+        if rc == 0:
+            # Refresh flips the row to ✓; cursor-by-id is preserved, so the
+            # subsequent detail render shows the freshly written report.
+            self.action_poll_now()
+        else:
+            self._investigate_error = (ticket_id, f"exit {rc}")
+            self._refresh_detail()
+
+    def _investigate_failed(self, ticket_id: int, msg: str) -> None:
+        self._investigate_proc = None
+        self._investigating_id = None
+        self._investigate_error = (ticket_id, msg)
+        self._refresh_detail()
+
+    def _selected_is_investigating(self) -> bool:
+        if self._investigating_id is None:
+            return False
+        row = self.selected_row
+        return row is not None and row.ticket_id == self._investigating_id
+
+    def _render_investigate_panel(self) -> str:
+        """Plain-text in-progress panel (preserves the y-copy contract)."""
+        frame = _BRAILLE[self._spinner_frame]
+        lines = [f"{frame} Investigating #{self._investigating_id} …", ""]
+        for _sub, label in INVESTIGATE_PHASES:
+            done = self._investigate_phases.get(label, False)
+            lines.append(f"  {'✓' if done else '•'} {label}")
+        lines.append("")
+        lines.append("Output:")
+        for raw in self._investigate_lines[-200:]:
+            lines.append(f"  {raw}")
+        return "\n".join(lines)
 
     def action_next_detail_file(self) -> None:
         row = self.selected_row
