@@ -9,7 +9,7 @@ from typing import Optional
 import typer
 
 from noc_cli import __version__, branding
-from noc_cli.config import config_path, load_config
+from noc_cli.config import config_path, load_config, set_config_value, valid_config_keys
 from noc_cli.doctor import print_report, run_checks
 from noc_cli.setup import run_setup
 
@@ -18,6 +18,31 @@ app = typer.Typer(
     help="Read-only NOC triage assistant for Carbyne APEX NG911/E911.",
     no_args_is_help=True,
 )
+config_app = typer.Typer(
+    help="Read and edit noc-cli configuration.",
+    no_args_is_help=True,
+)
+app.add_typer(config_app, name="config")
+
+
+def _valid_config_key_text() -> str:
+    return ", ".join(valid_config_keys())
+
+
+def _validate_config_key(key: str) -> None:
+    if key not in valid_config_keys():
+        typer.secho(
+            f"Unknown config key {key!r}. Valid keys: {_valid_config_key_text()}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _mask_config_value(key: str, value: object) -> str:
+    if key == "zendesk_api_token" and value:
+        return "********"
+    return str(value)
 
 
 def _version_callback(value: bool) -> None:
@@ -71,6 +96,45 @@ def setup() -> None:
         "Configuration written. Run `noc-cli doctor` to verify all checks pass.",
         fg=typer.colors.CYAN,
     )
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(..., help="Config field name to set."),
+    value: str = typer.Argument(..., help="Value to persist."),
+) -> None:
+    """Persist one config value to the data-dir `.env` file."""
+    try:
+        set_config_value(key, value)
+    except KeyError as exc:
+        message = exc.args[0] if exc.args else str(exc)
+        typer.secho(message, fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"{key}={_mask_config_value(key, value)}")
+
+
+@config_app.command("get")
+def config_get(
+    key: str = typer.Argument(..., help="Config field name to read."),
+) -> None:
+    """Print one effective config value."""
+    _validate_config_key(key)
+    value = getattr(load_config(), key)
+    typer.echo(f"{key}={_mask_config_value(key, value)}")
+
+
+@config_app.command("list")
+def config_list() -> None:
+    """Print all effective config values."""
+    cfg = load_config()
+    for key in valid_config_keys():
+        typer.echo(f"{key}={_mask_config_value(key, getattr(cfg, key))}")
+
+
+@config_app.command("path")
+def config_path_command() -> None:
+    """Print the config file path."""
+    typer.echo(config_path())
 
 
 @app.command()

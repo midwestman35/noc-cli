@@ -66,7 +66,7 @@ def test_valid_config_keys_lists_field_names():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_config.py -k "set_config_value or valid_config_keys" -v`
+Run: `uv run pytest tests/test_config.py -k "set_config_value or valid_config_keys" -v`
 Expected: FAIL — `ImportError: cannot import name 'set_config_value'`.
 
 - [ ] **Step 3: Implement in `noc_cli/config.py`**
@@ -98,12 +98,14 @@ def set_config_value(key: str, value: str) -> None:
     from noc_cli.setup import build_env_lines  # local import avoids a cycle
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_env_lines(ordered))
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(build_env_lines(ordered))
+    tmp_path.replace(path)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_config.py -v`
+Run: `uv run pytest tests/test_config.py -v`
 Expected: PASS (all, including the three pre-existing tests).
 
 - [ ] **Step 5: Commit**
@@ -143,6 +145,15 @@ def test_config_set_rejects_unknown_key(tmp_path, monkeypatch):
     assert "bogus" in result.output
 
 
+def test_config_set_masks_token_in_output(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    result = runner.invoke(app, ["config", "set", "zendesk_api_token", "supersecrettoken"])
+    assert result.exit_code == 0, result.output
+    assert "supersecrettoken" not in result.output
+    assert "zendesk_api_token" in result.output
+    assert "ZENDESK_API_TOKEN=supersecrettoken" in (tmp_path / ".env").read_text()
+
+
 def test_config_get_prints_value(tmp_path, monkeypatch):
     monkeypatch.setenv("NOC_HOME", str(tmp_path))
     (tmp_path / ".env").write_text("NOC_WATCH_ASSIGNEE=enriquev@carbyne.com\n")
@@ -177,7 +188,7 @@ def test_help_lists_config_command():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_cli.py -k config -v`
+Run: `uv run pytest tests/test_cli.py -k config -v`
 Expected: FAIL — config command does not exist (non-zero exit / "No such command").
 
 - [ ] **Step 3: Implement the `config` sub-app in `noc_cli/cli.py`**
@@ -209,7 +220,8 @@ def config_set(key: str = typer.Argument(...), value: str = typer.Argument(...))
             err=True,
         )
         raise typer.Exit(code=1)
-    typer.secho(f"Set {key} = {value}", fg=typer.colors.GREEN)
+    shown = _mask(value) if key == "zendesk_api_token" else value
+    typer.secho(f"Set {key} = {shown}", fg=typer.colors.GREEN)
 
 
 @config_app.command("get")
@@ -245,7 +257,7 @@ def config_path_cmd() -> None:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_cli.py -k config -v`
+Run: `uv run pytest tests/test_cli.py -k config -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -291,7 +303,7 @@ def test_state_md_includes_master_and_cluster_when_present(tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_render.py -k "quoted_rubric_row_in_frontmatter or master_and_cluster" -v`
+Run: `uv run pytest tests/test_render.py -k "quoted_rubric_row_in_frontmatter or master_and_cluster" -v`
 Expected: FAIL — frontmatter lacks `quoted_rubric_row:` / `master:` / cluster.
 
 - [ ] **Step 3: Implement in `noc_cli/render.py`**
@@ -342,7 +354,7 @@ Then in `_render_state`, replace the `lines = [ ... ]` frontmatter block so it r
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_render.py -v`
+Run: `uv run pytest tests/test_render.py -v`
 Expected: PASS (all, including pre-existing frontmatter tests).
 
 - [ ] **Step 5: Commit**
@@ -428,7 +440,7 @@ def test_humanize_when():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_watch_inbox.py -v`
+Run: `uv run pytest tests/test_watch_inbox.py -v`
 Expected: FAIL — `ModuleNotFoundError: noc_cli.watch.inbox`.
 
 - [ ] **Step 3: Implement `noc_cli/watch/inbox.py`**
@@ -544,7 +556,7 @@ def humanize_when(dt: Optional[datetime], now: datetime) -> str:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_watch_inbox.py -v`
+Run: `uv run pytest tests/test_watch_inbox.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -600,12 +612,14 @@ def test_render_summary_flags_version_mismatch():
 def test_render_activity_lists_recent_comments():
     t = Ticket(id=7, subject="No ANI", status="open", requester_email="c@site.com")
     t.comments = [
-        Comment(id=1, public=True, body="customer reply", created_at=_dt(2026, 6, 4, 9, 0, tzinfo=timezone.utc)),
-        Comment(id=2, public=False, body="internal note", created_at=_dt(2026, 6, 4, 10, 0, tzinfo=timezone.utc)),
+        Comment(id=1, author_id=44, public=True, body="customer reply", created_at=_dt(2026, 6, 4, 9, 0, tzinfo=timezone.utc)),
+        Comment(id=2, author_id=55, public=False, body="internal note", created_at=_dt(2026, 6, 4, 10, 0, tzinfo=timezone.utc)),
     ]
     out = render_activity(t)
     assert "ZD-7" in out
     assert "No ANI" in out
+    assert "author #44" in out
+    assert "author #55" in out
     assert "[internal]" in out
     assert "[public]" in out
     assert "press [i]" in out
@@ -613,7 +627,7 @@ def test_render_activity_lists_recent_comments():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_watch_inbox.py -k "render_summary or render_activity" -v`
+Run: `uv run pytest tests/test_watch_inbox.py -k "render_summary or render_activity" -v`
 Expected: FAIL — `ImportError: cannot import name 'render_summary'`.
 
 - [ ] **Step 3: Implement in `noc_cli/watch/inbox.py`**
@@ -679,16 +693,17 @@ def render_activity(ticket: Ticket) -> str:
     for c in comments[:5]:
         kind = "public" if c.public else "internal"
         ts = c.created_at.strftime("%Y-%m-%d %H:%M") if c.created_at else "—"
+        author = f"author #{c.author_id}" if c.author_id is not None else "author unknown"
         body = (c.body or "").strip().replace("\n", " ")
         if len(body) > 80:
             body = body[:77] + "..."
-        lines.append(f"  · [{kind}] {ts} — {body}")
+        lines.append(f"  · [{kind}] {ts} · {author} — {body}")
     return "\n".join(lines)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_watch_inbox.py -v`
+Run: `uv run pytest tests/test_watch_inbox.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -788,9 +803,18 @@ def test_parse_unparseable_returns_none(tmp_path):
     assert parse_state_md(p) is None
 
 
+def test_parse_bad_frontmatter_scalar_returns_none(tmp_path):
+    p = tmp_path / "44999" / "STATE.md"
+    p.parent.mkdir()
+    p.write_text("---\nticket_id: not-a-number\nrelated:\n  zendesk: [44999]\n---\n")
+    assert parse_state_md(p) is None
+
+
 def test_scan_skips_non_numeric_and_missing_state(tmp_path):
     (tmp_path / "44999").mkdir()
     (tmp_path / "44999" / "STATE.md").write_text(_FULL)
+    (tmp_path / "45000").mkdir()
+    (tmp_path / "45000" / "STATE.md").write_text("---\nticket_id: nope\n---\n")
     (tmp_path / "notes").mkdir()                       # non-numeric → skip
     (tmp_path / "55555").mkdir()                       # numeric but no STATE.md → skip
     out = scan_investigations(tmp_path)
@@ -803,7 +827,7 @@ def test_scan_missing_root_returns_empty(tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_watch_disk_scan.py -v`
+Run: `uv run pytest tests/test_watch_disk_scan.py -v`
 Expected: FAIL — `ModuleNotFoundError: noc_cli.watch.disk_scan`.
 
 - [ ] **Step 3: Implement `noc_cli/watch/disk_scan.py`**
@@ -864,19 +888,22 @@ def parse_state_md(path: Path) -> Optional[InboxSummary]:
         key, _, raw = line.partition(":")
         key = key.strip()
         raw = raw.strip()
-        if not indented:
-            in_related = key == "related"
-            if key == "ticket_id":
-                summ.ticket_id = int(raw or 0)
-            elif key in _TOP_SCALARS:
-                setattr(summ, key, _unquote(raw))
-        elif in_related:
-            if key == "zendesk":
-                summ.related_zendesk = _as_int_list(raw)
-            elif key == "jira":
-                summ.related_jira = _as_str_list(raw)
-            elif key == "master":
-                summ.master = int(raw) if raw.lstrip("-").isdigit() else None
+        try:
+            if not indented:
+                in_related = key == "related"
+                if key == "ticket_id":
+                    summ.ticket_id = int(raw or 0)
+                elif key in _TOP_SCALARS:
+                    setattr(summ, key, _unquote(raw))
+            elif in_related:
+                if key == "zendesk":
+                    summ.related_zendesk = _as_int_list(raw)
+                elif key == "jira":
+                    summ.related_jira = _as_str_list(raw)
+                elif key == "master":
+                    summ.master = int(raw) if raw.lstrip("-").isdigit() else None
+        except (TypeError, ValueError):
+            return None
 
     # ticket id falls back to the folder name (Tickets/<id>/)
     if not summ.ticket_id and path.parent.name.isdigit():
@@ -889,7 +916,10 @@ def parse_state_md(path: Path) -> Optional[InboxSummary]:
                 summ.quoted_rubric_row = line[1:].strip()
                 break
 
-    summ.investigated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    try:
+        summ.investigated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return None
     return summ
 
 
@@ -918,7 +948,10 @@ def scan_investigations(tickets_root: Path) -> list[InboxSummary]:
         state = child / "STATE.md"
         if not state.exists():
             continue
-        summ = parse_state_md(state)
+        try:
+            summ = parse_state_md(state)
+        except Exception:
+            summ = None
         if summ is not None:
             out.append(summ)
     return out
@@ -926,7 +959,7 @@ def scan_investigations(tickets_root: Path) -> list[InboxSummary]:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_watch_disk_scan.py -v`
+Run: `uv run pytest tests/test_watch_disk_scan.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1004,6 +1037,16 @@ class _FakeClient:
         return list(self._comments.get(ticket_id, []))
 
 
+class _FailingClient:
+    def view_tickets(self, view_id):
+        from noc_cli.zendesk import ZendeskError
+
+        raise ZendeskError("offline")
+
+    def get_comments(self, ticket_id):
+        return []
+
+
 def _write_state(tmp_path, tid: int) -> None:
     root = tmp_path / "Tickets" / str(tid)
     root.mkdir(parents=True)
@@ -1056,6 +1099,42 @@ async def test_segments_populated_after_poll(db_conn, tmp_path, monkeypatch):
         assert "My queue" in rendered
         assert "✓" in rendered            # the worked row
         assert "○" in rendered            # an un-triaged queue row
+        assert "agent / open" in rendered  # Owner / Status column for triaged rows
+
+
+async def test_poll_error_still_shows_recently_worked_disk_rows(db_conn, tmp_path, monkeypatch):
+    monkeypatch.delenv("NOC_TICKETS_ROOT", raising=False)
+    _write_state(tmp_path, 4000)
+    app = _make_app(_config(tmp_path), _FailingClient(), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.action_poll_now()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        from noc_cli.tui.watch_app import TicketList
+
+        tl = app.query_one("#ticket-list", TicketList)
+        assert [r.ticket_id for r in tl.rows] == [4000]
+        assert "Poll error:" in str(app.query_one("#notification").renderable)
+
+
+async def test_refresh_preserves_cursor_by_ticket_id(db_conn, tmp_path, monkeypatch):
+    monkeypatch.delenv("NOC_TICKETS_ROOT", raising=False)
+    client = _FakeClient([_ticket(1), _ticket(2)])
+    app = _make_app(_config(tmp_path), client, WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.action_poll_now()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
+
+        client._tickets = [_ticket(2), _ticket(1)]  # order changed between polls
+        app.action_poll_now()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        from noc_cli.tui.watch_app import TicketList
+
+        assert app.query_one("#ticket-list", TicketList).selected().ticket_id == 2
 
 
 async def test_detail_shows_summary_for_worked_row(db_conn, tmp_path, monkeypatch):
@@ -1100,6 +1179,9 @@ async def test_tab_cycles_to_a_file(db_conn, tmp_path, monkeypatch):
         await pilot.press("tab")          # summary -> INTAKE.md
         await pilot.pause()
         assert app.detail_mode == "INTAKE.md"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.detail_mode == "summary"
 
 
 async def test_i_key_launches_investigate(db_conn, tmp_path, monkeypatch):
@@ -1117,11 +1199,41 @@ async def test_i_key_launches_investigate(db_conn, tmp_path, monkeypatch):
     assert mock_popen.call_count == 1
     cmd = mock_popen.call_args[0][0]
     assert "investigate" in cmd and "99" in cmd
+
+
+async def test_o_key_opens_zendesk_ticket(db_conn, tmp_path, monkeypatch):
+    monkeypatch.delenv("NOC_TICKETS_ROOT", raising=False)
+    client = _FakeClient([_ticket(99)])
+    app = _make_app(_config(tmp_path), client, WatchState(db_conn))
+    with patch("webbrowser.open") as mock_open:
+        async with app.run_test(size=(120, 40)) as pilot:
+            app.action_poll_now()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+    mock_open.assert_called_once_with("https://carbyne.zendesk.com/agent/tickets/99")
+
+
+async def test_y_key_copies_current_summary(db_conn, tmp_path, monkeypatch):
+    monkeypatch.delenv("NOC_TICKETS_ROOT", raising=False)
+    _write_state(tmp_path, 4000)
+    app = _make_app(_config(tmp_path), _FakeClient(), WatchState(db_conn))
+    copied: list[str] = []
+    app.copy_to_clipboard = copied.append
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.action_poll_now()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+    assert copied
+    assert "ZD-4000" in copied[0]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/test_watch_app.py -v`
+Run: `uv run pytest tests/test_watch_app.py -v`
 Expected: FAIL — the new widget ids / `TicketList` / `detail_mode` do not exist yet.
 
 - [ ] **Step 3: Rewrite `noc_cli/tui/watch_app.py`**
@@ -1207,10 +1319,23 @@ class TicketList(Static):
     def rows(self) -> list[InboxRow]:
         return self._worked + self._queue
 
-    def set_rows(self, worked: list[InboxRow], queue: list[InboxRow]) -> None:
+    def set_rows(
+        self,
+        worked: list[InboxRow],
+        queue: list[InboxRow],
+        *,
+        selected_ticket_id: int | None = None,
+    ) -> None:
         self._worked = list(worked)
         self._queue = list(queue)
-        if self.cursor >= len(self.rows):
+        if selected_ticket_id is not None:
+            for idx, row in enumerate(self.rows):
+                if row.ticket_id == selected_ticket_id:
+                    self.cursor = idx
+                    break
+            else:
+                self.cursor = min(self.cursor, max(0, len(self.rows) - 1))
+        elif self.cursor >= len(self.rows):
             self.cursor = max(0, len(self.rows) - 1)
         self.refresh()
 
@@ -1246,10 +1371,12 @@ class TicketList(Static):
                     or (r.ticket.status if r.ticket else None)
                     or "in queue"
                 )
+                owner = r.summary.owner if (r.summary and r.summary.owner) else ""
+                owner_status = f"{owner} / {status}" if owner else status
                 when = humanize_when(r.when, now)
                 out.append(
                     f"{'◉' if here else ' '} {glyph} #{r.ticket_id:<7} "
-                    f"{fork:<4} {when:<8} {conf:<6} {status}\n",
+                    f"{fork:<4} {when:<8} {conf:<6} {owner_status}\n",
                     style="bold" if here else "",
                 )
                 idx += 1
@@ -1353,6 +1480,8 @@ class WatchApp(App[None]):
         self._last_poll = datetime.now(tz=timezone.utc).strftime("%H:%M")
         if message.error:
             self._notify_line(f"Poll error: {message.error[:80]}")
+            self._rebuild_segments()
+            self._refresh_detail()
             self._update_banner()
             return
         for tid, snap in message.seeds.items():
@@ -1368,10 +1497,16 @@ class WatchApp(App[None]):
         self._update_banner()
 
     def _rebuild_segments(self) -> None:
+        selected = self._selected()
+        selected_id = selected.ticket_id if selected is not None else None
         tickets_root = Path(os.environ.get("NOC_TICKETS_ROOT", str(self._config.tickets_root)))
         disk = scan_investigations(tickets_root)
         worked, queue = build_segments(disk, self._tickets, now=datetime.now(timezone.utc))
-        self.query_one("#ticket-list", TicketList).set_rows(worked, queue)
+        self.query_one("#ticket-list", TicketList).set_rows(
+            worked,
+            queue,
+            selected_ticket_id=selected_id,
+        )
 
     # ── navigation + detail ────────────────────────────────────────────
     def _selected(self) -> InboxRow | None:
@@ -1502,8 +1637,8 @@ class WatchApp(App[None]):
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pytest tests/test_watch_app.py -v`
-Expected: PASS (all 6 tests).
+Run: `uv run pytest tests/test_watch_app.py -v`
+Expected: PASS (all TUI tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1533,7 +1668,7 @@ def test_help_lists_full_command_surface():
 
 - [ ] **Step 2: Run the full test suite**
 
-Run: `pytest -q`
+Run: `uv run pytest -q`
 Expected: PASS — all suites green (existing + new `test_watch_inbox.py`, `test_watch_disk_scan.py`, rewritten `test_watch_app.py`, extended `test_config.py` / `test_cli.py` / `test_render.py`).
 
 - [ ] **Step 3: Manual smoke (no live Zendesk needed)**
@@ -1559,10 +1694,15 @@ related:
 > RTP absent in PCAP
 EOF
 uv run noc-cli config set watch_assignee enriquev@carbyne.com
+uv run noc-cli config set zendesk_subdomain carbyne
+uv run noc-cli config set zendesk_email smoke@example.com
+uv run noc-cli config set zendesk_api_token smoke-token
 uv run noc-cli config list
 # Then (Ctrl-C to exit): the left pane should show "Recently worked (3d)" with #44999 ✓,
 # and selecting it should render the summary (Fork: A · Confidence: High …) on the right.
-uv run noc-cli watch --view 555 --interval 9999 || true
+# Interval 9998 triggers the first poll on mount; if Zendesk is unavailable, the
+# poll-error path must still show the disk-backed Recently worked row.
+uv run noc-cli watch --view 555 --interval 9998 || true
 ```
 
 Expected: `config list` shows `watch_assignee = enriquev@carbyne.com` (token masked); the inbox renders the two-pane layout with #44999 under "Recently worked".
@@ -1578,7 +1718,7 @@ git commit -m "test(cli): assert config in command surface; finalize inbox viewe
 
 ## Self-Review (completed during planning)
 
-- **Spec coverage:** banner (Task 7) · segmented left pane / dedup / 3-day window (Tasks 4,7) · right-pane summary + file cycle + activity (Tasks 5,7) · disk scan + STATE.md parse w/ legacy fallback (Task 6) · `render.py` frontmatter (Task 3) · keybindings incl. `i` investigate (Task 7) · `config set/get/list/path` (Tasks 1,2) · single-value assignee unchanged (no `poll_view` change) · testing strategy (every task). All spec sections map to a task.
+- **Spec coverage:** banner (Task 7) · segmented left pane / dedup / 3-day window / owner-status column (Tasks 4,7) · right-pane summary + file cycle + author-marked activity (Tasks 5,7) · disk scan + STATE.md parse w/ legacy fallback and fail-closed bad files (Task 6) · poll-error disk refresh + cursor preservation by ticket id (Task 7) · `render.py` frontmatter (Task 3) · keybindings incl. `i` investigate, `Esc`, `o` open, and `y` copy (Task 7) · `config set/get/list/path` with token masking and atomic file replacement (Tasks 1,2) · single-value assignee unchanged (no `poll_view` change) · testing strategy (every task). All spec sections map to a task.
 - **Placeholder scan:** none — every code/test step shows complete content.
 - **Type/name consistency:** `InboxSummary`/`InboxRow`/`build_segments`/`humanize_when`/`render_summary`/`render_activity` defined in Tasks 4–5 and consumed identically in `disk_scan.py` (Task 6) and `watch_app.py` (Task 7); widget ids (`#ticket-list`, `#detail`, `#detail-content`, `#banner`, `#notification`) and `detail_mode` match across the app and its tests.
 

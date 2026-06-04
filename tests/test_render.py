@@ -58,6 +58,7 @@ def test_state_md_has_yaml_frontmatter(tmp_path):
     assert "symptom_tag:" in content
     assert "confidence:" in content
     assert "rubric_version:" in content
+    assert "quoted_rubric_row:" in content
 
 
 def test_state_md_fork_letter_is_correct(tmp_path):
@@ -73,6 +74,43 @@ def test_state_md_records_owner(tmp_path):
     render_handoff(load_good(), folder, owner="alice@axon.com")
     content = (folder.root / "STATE.md").read_text()
     assert 'owner: "alice@axon.com"' in content
+
+
+def test_state_md_records_master_ticket_and_cluster(tmp_path):
+    handoff = load_good()
+    handoff.fork_packet.master_ticket = 12345
+    handoff.fork_packet.cluster = "Aurora metro outage"
+    folder = scaffold_ticket(tmp_path, 18432)
+
+    render_handoff(handoff, folder)
+
+    content = (folder.root / "STATE.md").read_text()
+    assert "  master: 12345" in content
+    assert 'cluster: "Aurora metro outage"' in content
+
+
+def test_state_md_omits_master_ticket_and_cluster_when_absent(tmp_path):
+    handoff = load_good()
+    handoff.fork_packet.master_ticket = None
+    handoff.fork_packet.cluster = None
+    folder = scaffold_ticket(tmp_path, 18432)
+
+    render_handoff(handoff, folder)
+
+    content = (folder.root / "STATE.md").read_text()
+    assert "cluster:" not in content
+    assert "  master:" not in content
+
+
+def test_state_md_quotes_rubric_row_as_single_line_yaml_scalar(tmp_path):
+    handoff = load_good()
+    handoff.fork_packet.quoted_rubric_row = 'alpha "beta" \\ gamma\nnext'
+    folder = scaffold_ticket(tmp_path, 18432)
+
+    render_handoff(handoff, folder)
+
+    content = (folder.root / "STATE.md").read_text()
+    assert 'quoted_rubric_row: "alpha \\"beta\\" \\\\ gamma\\nnext"' in content
 
 
 def test_drafts_md_contains_customer_reply(tmp_path):

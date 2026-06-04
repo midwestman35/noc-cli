@@ -6,6 +6,22 @@ from noc_cli.cli import app
 
 runner = CliRunner()
 
+CONFIG_ENV_KEYS = [
+    "ZENDESK_SUBDOMAIN",
+    "ZENDESK_EMAIL",
+    "ZENDESK_API_TOKEN",
+    "NOC_TICKETS_ROOT",
+    "NOC_OWNER",
+    "NOC_WATCH_VIEW",
+    "NOC_WATCH_ASSIGNEE",
+    "NOC_NOTIFY",
+]
+
+
+def _clear_config_env(monkeypatch):
+    for key in CONFIG_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
 
 def test_version_flag_prints_version():
     result = runner.invoke(app, ["--version"])
@@ -21,11 +37,96 @@ def test_render_banner_includes_name_and_tagline():
     assert "Carbyne APEX" in out
 
 
-def test_help_lists_full_command_surface():
+def test_help_lists_config_in_full_command_surface():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("setup", "doctor", "investigate", "watch"):
+    for command in ("setup", "doctor", "investigate", "watch", "config"):
         assert command in result.stdout
+
+
+def test_config_set_writes_env_file(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+
+    result = runner.invoke(app, ["config", "set", "watch_assignee", "alice@carbyne.com"])
+
+    assert result.exit_code == 0, result.output
+    assert "watch_assignee=alice@carbyne.com" in result.output
+    assert "NOC_WATCH_ASSIGNEE=alice@carbyne.com" in (tmp_path / ".env").read_text()
+
+
+def test_config_get_prints_effective_value(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("NOC_WATCH_ASSIGNEE=alice@carbyne.com\n")
+
+    result = runner.invoke(app, ["config", "get", "watch_assignee"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "watch_assignee=alice@carbyne.com"
+
+
+def test_config_list_masks_zendesk_api_token(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text(
+        "ZENDESK_EMAIL=alice@carbyne.com\n"
+        "ZENDESK_API_TOKEN=raw-secret-token\n"
+        "NOC_WATCH_ASSIGNEE=alice@carbyne.com\n"
+    )
+
+    result = runner.invoke(app, ["config", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert "zendesk_email=alice@carbyne.com" in result.output
+    assert "zendesk_api_token=********" in result.output
+    assert "raw-secret-token" not in result.output
+
+
+def test_config_get_masks_zendesk_api_token(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("ZENDESK_API_TOKEN=raw-secret-token\n")
+
+    result = runner.invoke(app, ["config", "get", "zendesk_api_token"])
+
+    assert result.exit_code == 0, result.output
+    assert "zendesk_api_token=********" in result.output
+    assert "raw-secret-token" not in result.output
+
+
+def test_config_set_zendesk_api_token_masks_output_but_writes_raw_value(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+
+    result = runner.invoke(app, ["config", "set", "zendesk_api_token", "raw-secret-token"])
+
+    assert result.exit_code == 0, result.output
+    assert "zendesk_api_token=********" in result.output
+    assert "raw-secret-token" not in result.output
+    assert "ZENDESK_API_TOKEN=raw-secret-token" in (tmp_path / ".env").read_text()
+
+
+def test_config_path_prints_env_path(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+
+    result = runner.invoke(app, ["config", "path"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == str(tmp_path / ".env")
+
+
+def test_config_set_unknown_key_exits_nonzero_with_valid_keys(tmp_path, monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+
+    result = runner.invoke(app, ["config", "set", "not_real", "value"])
+
+    assert result.exit_code != 0
+    assert "not_real" in result.output
+    assert "zendesk_email" in result.output
+    assert "watch_assignee" in result.output
 
 
 def test_setup_command_writes_env_file(tmp_path, monkeypatch):
