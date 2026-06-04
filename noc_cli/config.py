@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -36,6 +37,61 @@ def config_path() -> Path:
 
 def db_path() -> Path:
     return data_dir() / "noc.db"
+
+
+def valid_config_keys() -> list[str]:
+    """Editable Config field names accepted by `noc-cli config`."""
+    return list(_FIELD_ENV)
+
+
+def set_config_value(key: str, value: str) -> None:
+    """Set one persisted config value in the data-dir `.env` file.
+
+    This intentionally reads only the `.env` file, not process environment
+    overrides, so `config set` does not accidentally persist transient shell
+    values.
+    """
+    if key not in _FIELD_ENV:
+        valid = ", ".join(valid_config_keys())
+        raise KeyError(f"Unknown config key {key!r}. Valid keys: {valid}")
+
+    # Import here to avoid a module-level cycle: setup imports Config.
+    from noc_cli.setup import build_env_lines
+
+    path = config_path()
+    file_values = dotenv_values(path)
+    answers: dict[str, str] = {}
+
+    for field, env_key in _FIELD_ENV.items():
+        if field == key:
+            answers[env_key] = value
+            continue
+        file_value = file_values.get(env_key)
+        if file_value is not None:
+            answers[env_key] = file_value
+
+    payload = build_env_lines(answers)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            encoding="utf-8",
+            delete=False,
+        ) as tmp:
+            temp_path = Path(tmp.name)
+            tmp.write(payload)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        temp_path.replace(path)
+    except Exception:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+        raise
 
 
 class Config(BaseModel):

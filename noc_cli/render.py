@@ -172,6 +172,17 @@ def _render_drafts(drafts: DraftsBlock) -> str:
     return "\n".join(lines)
 
 
+def _yaml_q(text: str) -> str:
+    escaped = (
+        text.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "\\n")
+    )
+    return f'"{escaped}"'
+
+
 def _render_state(handoff: Handoff, owner: str) -> str:
     fp = handoff.fork_packet
     intake = handoff.intake
@@ -182,11 +193,20 @@ def _render_state(handoff: Handoff, owner: str) -> str:
         f'symptom_tag: "{fp.symptom_tag}"',
         f'confidence: "{fp.confidence.value}"',
         f'rubric_version: "{handoff.rubric_version}"',
+        f"quoted_rubric_row: {_yaml_q(fp.quoted_rubric_row)}",
         'status: "open"',
         f'owner: "{owner}"',
+    ]
+    if fp.cluster is not None:
+        lines.append(f"cluster: {_yaml_q(fp.cluster)}")
+    lines += [
         "related:",
         f"  zendesk: {json.dumps(fp.related_zendesk)}",
         f"  jira: {json.dumps(fp.related_jira)}",
+    ]
+    if fp.master_ticket is not None:
+        lines.append(f"  master: {fp.master_ticket}")
+    lines += [
         "---",
         "",
         f"# Ticket {intake.ticket_id} — {intake.one_line_fingerprint}",
