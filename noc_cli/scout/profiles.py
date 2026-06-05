@@ -46,6 +46,9 @@ def build_options(
     kwargs = {
         "system_prompt": system_prompt,
         "allowed_tools": list(profile.allowed_tools),
+        # bypassPermissions skips interactive prompts; the read-only `build_hooks`
+        # sandbox (passed in via `hooks`) is the real gate, denying writes and
+        # out-of-workspace access before any permission check runs.
         "permission_mode": "bypassPermissions",
         "max_turns": profile.max_turns,
         "model": profile.model,

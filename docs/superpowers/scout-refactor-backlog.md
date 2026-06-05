@@ -41,11 +41,11 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 
 | # | Item | Source | Status | Notes |
 |---|------|--------|--------|-------|
-| 11 | **Split `investigate` out of `cli.py`** — `_run_investigate` is ~220 lines | Refactor #10; 1k-line rule | open | Required before the next large CLI feature; not Scout-specific |
-| 12 | **Move `_now_utc()` out of `cli.py`** | Minor | open | Trivial util; belongs in scout or shared `time` helper |
-| 13 | **Document `permission_mode: bypassPermissions`** — one-line comment that hooks are the real gate for Scout profiles | Minor | open | Acceptable today; clarity for future readers |
-| 14 | **Synthesis `cwd` default** — `synthesize(..., cwd=".")` is untyped; runner always overrides via factory | Minor | open | Low risk while synthesis has no tools |
-| 15 | **Optional: single `get_ticket` on `--take`** | Minor | open | Double fetch is correct for TOCTOU; optimize only if latency matters |
+| 11 | **Split `investigate` out of `cli.py`** — `_run_investigate` is ~220 lines | Refactor #10; 1k-line rule | **deferred** | Required before the next large CLI feature; not Scout-specific. Removes the lazy `cli`↔`scout.commands` back-import in `invoke_investigate` when done |
+| 12 | **Move `_now_utc()` out of `cli.py`** | Minor | **done** | Resolved by #3: now `scout/commands.py::now_utc`; no longer in `cli.py` |
+| 13 | **Document `permission_mode: bypassPermissions`** — one-line comment that hooks are the real gate for Scout profiles | Minor | **done** | Comment added in `profiles.py::build_options` |
+| 14 | **Synthesis `cwd` default** — `synthesize(..., cwd=".")` is untyped; runner always overrides via factory | Minor | **done** | Resolved by #7: typed `cwd: Path \| str` |
+| 15 | **Optional: single `get_ticket` on `--take`** | Minor | **deferred** | Double fetch is correct for TOCTOU; optimize only if latency matters |
 
 ---
 
@@ -55,7 +55,7 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 2. ~~**P1 batch A:** #4 (hooks factory) + #6 (llm_io)~~ — complete.
 3. ~~**P1 batch B:** #3 + #5 (+ #9)~~ — complete. Eligibility landed in `rank.py`; no separate `take.py` was needed.
 4. ~~**P2:** #7–#10~~ — complete. (mypy not yet in the repo; `ports.py` annotations are ready for it when added.)
-5. **P3:** #11 when adding the next major CLI command; rest are opportunistic.
+5. ~~**P3:** #12, #13, #14~~ — complete (#12/#14 resolved incidentally by #3/#7; #13 a one-line comment). **#11 and #15 remain deliberately deferred** — see notes.
 
 ---
 
