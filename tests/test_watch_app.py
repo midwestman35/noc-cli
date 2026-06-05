@@ -552,3 +552,16 @@ async def test_banner_shows_version(db_conn, tmp_path):
         banner = _text(app.query_one("#banner"))
     assert f"v{__version__}" in banner
     assert "my tickets" in banner
+
+
+async def test_splash_shows_then_dissolves_on_first_poll(db_conn, tmp_path):
+    from noc_cli import __version__
+
+    app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        splash = app.query("#splash")
+        assert len(splash) == 1
+        assert f"v{__version__}" in _text(splash.first())
+        await _poll(app, pilot)
+        assert len(app.query("#splash")) == 0

@@ -72,7 +72,16 @@ _TAB_TAGLINES = {
 }
 
 _CSS = """
-Screen { layout: vertical; }
+Screen { layout: vertical; layers: base overlay; }
+#splash {
+    layer: overlay;
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    text-align: center;
+    background: $surface;
+    color: $text;
+}
 #banner {
     height: 1;
     background: $surface-darken-1;
@@ -425,6 +434,7 @@ class WatchApp(App[None]):
         # Toggles each pulse repaint so the highlight blinks a few times before
         # settling to just the steady `!` badge.
         self._pulse_phase = False
+        self._splash_dismissed = False
 
     @property
     def selected_row(self) -> InboxRow | None:
@@ -450,6 +460,7 @@ class WatchApp(App[None]):
                 with DetailPane(id="detail"):
                     yield Static("", id="detail-content", markup=False)
         yield Footer()
+        yield Static(self._splash_text(), id="splash", markup=False)
 
     def on_mount(self) -> None:
         self._update_banner()
@@ -494,6 +505,11 @@ class WatchApp(App[None]):
         if self._polling:
             parts.append(f"{_BRAILLE[self._spinner_frame]} polling...")
         banner.update(" · ".join(parts))
+
+    def _splash_text(self) -> str:
+        from noc_cli.branding import TAGLINE
+
+        return f"noc-cli\n\n{TAGLINE}\nv{__version__}\n\n⠹ Loading my tickets …"
 
     def _resolve_assignee_id(self) -> int | None:
         """Resolve the "my queue" assignee to a Zendesk user id, once.
@@ -550,6 +566,10 @@ class WatchApp(App[None]):
         self._run_poll(last_seen)
 
     def on_poll_complete(self, message: PollComplete) -> None:
+        if not self._splash_dismissed:
+            self._splash_dismissed = True
+            for node in self.query("#splash"):
+                node.remove()
         self._polling = False
         self._last_poll = (
             datetime.now(tz=timezone.utc)
