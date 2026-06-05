@@ -20,6 +20,20 @@
 
 ---
 
+## Phase 0 — PR #6 (Backlog Scout) integration  ✅ DONE
+
+PR #6 (`feat/backlog-scout-engine`) was merged into this branch **before** implementation so the shipped package includes both features. Record + verification:
+
+- **Merge:** `git merge origin/feat/backlog-scout-engine` → commit `263efb5`, **clean, zero conflicts** (this branch held only docs; PR #6's code does not overlap the TUI files this plan edits).
+- **Baseline:** `uv run pytest -q` → **371 passed**. The integrated branch is green before Task 1 — keep it green task-by-task.
+- **Signatures verified against the merged tree:**
+  - `agent/harness.py::build_hooks(sandbox_root, events_path)` — **unchanged** (PR #6 added `restrict_read_tools` only to `make_pre_tool_use`); the Task 10 chat factory is safe as written.
+  - `cli.py` line refs are valid as-is: `app`@16, `main`@56, `doctor`@141, `investigate`@166, `scout`@459, `watch`@512.
+  - New modules (`investigate.py`, `tui/command.py`, `tui/chat.py`) and `tui/watch_app.py` do not overlap any `scout/*` module.
+- **Scout decision (option B, confirmed):** demote all three — `investigate`, `watch`, **and `scout`** — to hidden/deprecated aliases per spec §4.1 (Task 2 unchanged). `noc-cli scout` keeps working (hidden, with a deprecation warning); `/scout` stays a stub this release (Task 7) that points at the CLI command. PR #6's scout tests use substring assertions, so the added warning does not break them — Task 2 Step 4 re-runs `tests/test_cli_scout.py` to confirm.
+
+---
+
 ## Phase 1 — CLI surface (the shell entry)
 
 ### Task 1: Bare `noc-cli` launches the TUI
@@ -229,8 +243,8 @@ Update the existing `test_watch_command_exposes_flags` and `test_watch_command_r
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest tests/test_cli.py -v`
-Expected: PASS (all CLI tests, including the two updated ones).
+Run: `uv run pytest tests/test_cli.py tests/test_cli_scout.py -v`
+Expected: PASS — the updated `test_cli.py` help/alias tests, and PR #6's `tests/test_cli_scout.py` unchanged (a hidden command is still invokable; the deprecation warning is additive and those tests assert with substrings).
 
 - [ ] **Step 5: Commit**
 
@@ -1033,7 +1047,9 @@ Add the submit handler and dispatcher:
         elif name == "doctor":
             self._run_doctor()
         elif name == "scout":
-            self._set_notification("Scout not yet available on this build.")
+            # PR #6 shipped the engine as the (now hidden/deprecated) CLI command;
+            # an in-TUI Scout panel is a future task (interactive-feat.md §9).
+            self._set_notification("Scout runs from the CLI for now: `noc-cli scout`")
         else:
             self._set_notification(f"Unknown command /{name}; try /help")
 ```
