@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -28,11 +28,24 @@ ALLOWED_TOOLS = [
 
 
 @dataclass
+class TranscriptEntry:
+    """One captured step from the agent's streamed turn."""
+
+    kind: str
+    text: str = ""
+    tool_name: str = ""
+    tool_args: str = ""
+    raw_text: str = ""
+    raw_tool_args: str = ""
+
+
+@dataclass
 class RunnerResult:
     handoff: Handoff | None
     stash_path: Path | None = None
     raw_result: str = ""
     attempts: int = 0
+    transcript: list[TranscriptEntry] = field(default_factory=list)
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*(.*?)\s*```", re.DOTALL)
@@ -68,14 +81,89 @@ def _try_parse(raw: str) -> Handoff | None:
         return None
 
 
-async def _collect_result(query_gen) -> str:
-    """Drain the query async-generator and return the ResultMessage.result text."""
+def _summarize_tool_args(tool_input: dict) -> str:
+    """Return the path, pattern, or command that makes a tool call inspectable."""
+    if not isinstance(tool_input, dict):
+        return ""
+    for key in ("file_path", "path", "pattern", "command", "query"):
+        value = tool_input.get(key)
+        if value:
+            return str(value)[:160]
+    return ""
+
+
+def _raw_tool_args(tool_input: dict) -> str:
+    if not isinstance(tool_input, dict):
+        return ""
+    try:
+        return json.dumps(tool_input)
+    except TypeError:
+        return str(tool_input)
+
+
+def _stash_transcript(folder: TicketFolder, transcript: list[TranscriptEntry]) -> Path | None:
+    if not transcript:
+        return None
+    stash_dir = folder.root / ".debug"
+    stash_dir.mkdir(exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    transcript_path = stash_dir / f"transcript-{ts}.jsonl"
+    with transcript_path.open("w", encoding="utf-8") as f:
+        for entry in transcript:
+            f.write(json.dumps(asdict(entry)) + "\n")
+    return transcript_path
+
+
+async def _drain(query_gen) -> tuple[str, list[TranscriptEntry]]:
+    """Drain the agent stream and keep both final result and intermediate turns."""
     raw = ""
+    transcript: list[TranscriptEntry] = []
     async for message in query_gen:
         result_text = getattr(message, "result", None)
         if result_text is not None:
             raw = result_text
-    return raw
+            transcript.append(
+                TranscriptEntry(
+                    kind="result",
+                    text=str(result_text)[:4000],
+                    raw_text=str(result_text),
+                )
+            )
+            continue
+
+        content = getattr(message, "content", None)
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            text = getattr(block, "text", None)
+            if isinstance(text, str) and text.strip():
+                stripped = text.strip()
+                transcript.append(
+                    TranscriptEntry(kind="reasoning", text=stripped, raw_text=stripped)
+                )
+                continue
+            name = getattr(block, "name", None)
+            tool_input = getattr(block, "input", {}) or {}
+            if name:
+                transcript.append(
+                    TranscriptEntry(
+                        kind="tool",
+                        tool_name=str(name),
+                        tool_args=_summarize_tool_args(tool_input),
+                        raw_tool_args=_raw_tool_args(tool_input),
+                    )
+                )
+                continue
+            tool_result = getattr(block, "content", None)
+            if tool_result:
+                transcript.append(
+                    TranscriptEntry(
+                        kind="tool_result",
+                        text=str(tool_result)[:1000],
+                        raw_text=str(tool_result),
+                    )
+                )
+    return raw, transcript
 
 
 async def run_agent(
@@ -83,6 +171,7 @@ async def run_agent(
     folder: TicketFolder,
     system_prompt: str,
     history_context: str,
+    initial_hypothesis: str = "",
     _query_fn: Callable | None = None,
 ) -> RunnerResult:
     """Run the L3 triage agent and return a RunnerResult.
@@ -114,22 +203,33 @@ async def run_agent(
             hooks=hooks,
         )
 
+    if initial_hypothesis:
+        hypothesis_line = (
+            f"Analyst's initial hypothesis: {initial_hypothesis} — treat as a "
+            "starting point, not a verdict; re-steer if evidence does not correlate.\n\n"
+        )
+    else:
+        hypothesis_line = "No analyst hypothesis was provided — infer the symptom from intake.\n\n"
+
     full_prompt = (
         f"Triage ticket #{ticket_id}.\n\n"
+        f"{hypothesis_line}"
         f"Historical context (for historical_matches only — do not treat as ground truth):\n"
         f"{history_context}\n\n"
         "The ticket body and comments are in logs/00-ticket.md. Read it and every "
-        "other file under logs/, pcaps/, and analysis/. If no evidence covers the "
-        "incident window, return Fork D and list what is missing — do not fabricate. "
+        "other file under logs/, pcaps/, and analysis/. Ground your investigation in "
+        "the matching runbook under runbooks/. If no evidence covers the incident "
+        "window, return Fork D and list what is missing — do not fabricate. "
         "Emit only the Handoff JSON."
     )
 
     # Attempt 1
     gen1 = _query_fn(prompt=full_prompt, options=_make_options())
-    raw1 = await _collect_result(gen1)
+    raw1, transcript1 = await _drain(gen1)
     handoff = _try_parse(raw1)
     if handoff is not None:
-        return RunnerResult(handoff=handoff, raw_result=raw1, attempts=1)
+        _stash_transcript(folder, transcript1)
+        return RunnerResult(handoff=handoff, raw_result=raw1, attempts=1, transcript=transcript1)
 
     # Attempt 2 — correction prompt
     correction_prompt = (
@@ -138,10 +238,12 @@ async def run_agent(
         "The top-level keys must be: intake, evidence_preflight, fork_packet, drafts, rubric_version."
     )
     gen2 = _query_fn(prompt=correction_prompt, options=_make_options())
-    raw2 = await _collect_result(gen2)
+    raw2, transcript2 = await _drain(gen2)
     handoff2 = _try_parse(raw2)
+    combined = transcript1 + transcript2
     if handoff2 is not None:
-        return RunnerResult(handoff=handoff2, raw_result=raw2, attempts=2)
+        _stash_transcript(folder, combined)
+        return RunnerResult(handoff=handoff2, raw_result=raw2, attempts=2, transcript=combined)
 
     # Double failure — stash and abort
     stash_dir = folder.root / ".debug"
@@ -152,4 +254,11 @@ async def run_agent(
         f"# Attempt 1\n{raw1}\n\n# Attempt 2\n{raw2}\n",
         encoding="utf-8",
     )
-    return RunnerResult(handoff=None, stash_path=stash_path, raw_result=raw2, attempts=2)
+    _stash_transcript(folder, combined)
+    return RunnerResult(
+        handoff=None,
+        stash_path=stash_path,
+        raw_result=raw2,
+        attempts=2,
+        transcript=combined,
+    )

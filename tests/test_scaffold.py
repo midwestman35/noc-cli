@@ -67,3 +67,11 @@ def test_preflight_force_overrides_other_owner(tmp_path):
     folder = scaffold_ticket(tmp_path, 103)
     (folder.root / "STATE.md").write_text('---\nowner: "alice@axon.com"\n---\n')
     preflight_soft_lock(folder, owner="bob@axon.com", force=True)  # no raise
+
+
+def test_scaffold_stages_runbooks(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    assert folder.runbooks == folder.root / "runbooks"
+    assert (folder.runbooks / "low-audio.md").is_file()
+    assert (folder.runbooks / "apex.md").is_file()
+    assert (folder.runbooks / "fork-rubric.md").is_file()

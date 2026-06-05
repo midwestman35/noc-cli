@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from noc_cli.runbooks import DOMAIN_MAP
+
 APPROVED_TAGS_IN_PROMPT: tuple[str, ...] = (
     "[apex]",
     "[low audio]",
@@ -10,6 +12,24 @@ APPROVED_TAGS_IN_PROMPT: tuple[str, ...] = (
     "[unclassified]",
 )
 
+
+def _domain_map_block() -> str:
+    """Return the compact tag-to-runbook map embedded in the system prompt."""
+    return "\n".join(
+        f"  - {s.tag} -> `runbooks/{s.slug}.md` - {s.label} ({s.domain})"
+        for s in DOMAIN_MAP
+    )
+
+
+_DOMAIN_MAP_BLOCK = _domain_map_block()
+_CORE_BOUNDARY = "## Symptom Class"
+
+
+def _rubric_core_text(rubric_text: str) -> str:
+    if _CORE_BOUNDARY not in rubric_text:
+        return rubric_text
+    return rubric_text.split(_CORE_BOUNDARY, 1)[0].rstrip() + "\n"
+
 _PROMPT_TEMPLATE = """\
 # Role
 You are a senior L3 NOC triage analyst at Carbyne. Your task is to perform
@@ -19,20 +39,41 @@ the ticket folder.
 
 # What you must do
 1. Read the ticket body, comments, and all evidence files in your working
-   directory (logs/, pcaps/, analysis/).
-2. Follow the fork rubric (embedded below) to decide Fork A/B/C/D.
-3. Quote **verbatim** the single rubric row that committed the fork into
-   `fork_packet.quoted_rubric_row`.
-4. Select exactly one approved symptom tag from the list below and write it
+   directory (logs/, pcaps/, analysis/). Complete the Step 0 intake from the
+   rubric core below.
+2. Ground the investigation in the relevant runbook (see "Grounding protocol").
+3. Decide Fork A/B/C/D using the four fork definitions in the rubric core and the
+   decisive-evidence / fork-decision / stop-conditions of the runbook you loaded.
+4. Quote **verbatim** the single decisive row that committed the fork into
+   `fork_packet.quoted_rubric_row` - from the runbook you used, or the rubric core.
+5. Select exactly one approved symptom tag from the list below and write it
    into `fork_packet.symptom_tag`.
-5. If relevant historical tickets were provided, include up to 5 in
+6. If relevant historical tickets were provided, include up to 5 in
    `fork_packet.historical_matches`.
-6. Include the runbook slug and the decisive section text in
-   `fork_packet.runbook_reference`.
-7. Draft a customer reply and internal note in `drafts`. Draft a Jira ticket
+7. Record the runbook you used (or "consulted, ruled out") in
+   `fork_packet.runbook_reference` (slug + the decisive section text).
+8. Draft a customer reply and internal note in `drafts`. Draft a Jira ticket
    only for Fork A.
-8. Emit **only** the final Handoff JSON object as your last message — no prose
+9. Emit **only** the final Handoff JSON object as your last message — no prose
    before or after the JSON block.
+
+# Grounding protocol
+- The operator's initial hypothesis (if any) is in the turn prompt. Treat it as a
+  **soft prior**, not a verdict.
+- Pick the runbook for that hypothesis (or, if none was given, the symptom you
+  infer from intake) and `Read` it from the `runbooks/` directory in your working
+  directory. Ground evidence-gathering and the fork decision in it.
+- **Re-steer freely:** if the evidence does not correlate with that runbook, load
+  a different runbook or fall back to the rubric core - and record *why* you
+  pivoted in `fork_packet.reasoning`.
+- If nothing fits, triage on the rubric core alone, tag `[unclassified]` (or
+  `[apex]` for general platform behavior), and state plainly that you triaged
+  without a specialized runbook.
+- The full rubric (`runbooks/fork-rubric.md`) is also staged in your working
+  directory if you need a per-symptom class table you have not loaded.
+
+# Available runbooks (domain map)
+{domain_map}
 
 # Approved symptom tags (choose exactly one)
 {tags}
@@ -107,28 +148,30 @@ Example skeleton (replace all placeholder values):
   }}
 }}
 
-# Fork Rubric
+# Fork Rubric - core (domain-agnostic)
 {rubric}
 """
 
 _DEFAULT_RUBRIC_PLACEHOLDER = (
-    "[Rubric text not loaded — run build_system_prompt(rubric_text) "
-    "to embed the live rubric before passing to the agent.]"
+    "[Rubric core not loaded — run build_system_prompt(rubric_core) "
+    "to embed the live rubric core before passing to the agent.]"
 )
 
 SYSTEM_PROMPT: str = _PROMPT_TEMPLATE.format(
     tags="\n".join(f"  {t}" for t in APPROVED_TAGS_IN_PROMPT),
+    domain_map=_DOMAIN_MAP_BLOCK,
     rubric=_DEFAULT_RUBRIC_PLACEHOLDER,
 )
 
 
 def build_system_prompt(rubric_text: str) -> str:
-    """Return the system prompt with the live fork rubric embedded.
+    """Return the system prompt with the live fork-rubric core embedded.
 
     Call this immediately before constructing ClaudeAgentOptions so the agent
-    always sees the current rubric_version frontmatter.
+    sees the current domain-agnostic base plus the staged-runbook map.
     """
     return _PROMPT_TEMPLATE.format(
         tags="\n".join(f"  {t}" for t in APPROVED_TAGS_IN_PROMPT),
-        rubric=rubric_text,
+        domain_map=_DOMAIN_MAP_BLOCK,
+        rubric=_rubric_core_text(rubric_text),
     )

@@ -21,7 +21,7 @@
 | `noc_cli/agent/prompt.py` | Agent system prompt | Restructure template: core + domain map + grounding protocol |
 | `noc_cli/scaffold.py` | Ticket sandbox creation | Add `TicketFolder.runbooks`; stage runbooks in `scaffold_ticket` |
 | `noc_cli/agent/runner.py` | Agent run loop | Add `TranscriptEntry`, transcript capture, `initial_hypothesis` param |
-| `noc_cli/render.py` | Markdown rendering | Add `render_reasoning`, consulted-slug + warning helpers, STATE.md additions |
+| `noc_cli/render.py` | Markdown rendering | Add `render_reasoning`, consulted-slug + quote/runbook-reference warning helpers, STATE.md additions |
 | `noc_cli/seed.py` (new) | Analyst seed resolution | `resolve_seed`, menu helpers (testable, no TTY) |
 | `noc_cli/cli.py` | `investigate` orchestration | `--suspect`, seed prompt, wire core/seed/transcript/reasoning |
 | `tests/fixtures/handoff_pivot.json` (new) | Pivot test fixture | Hypothesis ≠ final tag |
@@ -57,16 +57,16 @@ def test_domain_map_tags_are_all_approved():
         assert s.domain and s.label
 
 
-def test_runbook_slug_from_path_matches_known_slugs():
+def test_runbook_slug_from_path_matches_staged_runbook_paths():
     assert runbook_slug_from_path("/t/18432/runbooks/low-audio.md") == "low-audio"
     assert runbook_slug_from_path("runbooks/apex.md") == "apex"
-    assert runbook_slug_from_path("no-ani.md") == "no-ani"
 
 
 def test_runbook_slug_from_path_rejects_non_runbooks():
     assert runbook_slug_from_path("/t/18432/runbooks/fork-rubric.md") is None
     assert runbook_slug_from_path("/t/18432/logs/station.log") is None
     assert runbook_slug_from_path("/t/18432/analysis/notes.md") is None
+    assert runbook_slug_from_path("no-ani.md") is None
     assert runbook_slug_from_path("") is None
 ```
 
@@ -109,7 +109,11 @@ def runbook_slug_from_path(path: str) -> str | None:
     and non-runbook files return None."""
     if not path:
         return None
-    name = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    normalized = path.replace("\\", "/").rstrip("/")
+    parts = normalized.split("/")
+    if len(parts) < 2 or parts[-2] != "runbooks":
+        return None
+    name = parts[-1]
     if not name.endswith(".md"):
         return None
     slug = name[:-3]
@@ -859,7 +863,7 @@ from noc_cli.agent.runner import TranscriptEntry
 from noc_cli.render import (
     consulted_runbook_slugs,
     render_reasoning,
-    runbook_reference_warnings,
+    validation_warnings,
 )
 
 
@@ -877,11 +881,18 @@ def test_consulted_runbook_slugs_from_transcript():
     assert consulted_runbook_slugs([]) == []
 
 
-def test_runbook_reference_warnings_flags_mismatch():
+def test_validation_warnings_flags_runbook_mismatch_and_bad_quote(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
     handoff = load_good()  # runbook_reference.slug == "apex"
-    assert runbook_reference_warnings(handoff, ["apex"]) == []
-    warns = runbook_reference_warnings(handoff, ["low-audio"])
+    assert validation_warnings(handoff, ["apex"], folder=folder) == []
+    warns = validation_warnings(handoff, ["low-audio"], folder=folder)
     assert len(warns) == 1 and "apex" in warns[0]
+    bad_quote = handoff.model_copy(
+        deep=True,
+        update={"fork_packet": handoff.fork_packet.model_copy(update={"quoted_rubric_row": "not a real rubric row"})},
+    )
+    quote_warns = validation_warnings(bad_quote, ["apex"], folder=folder)
+    assert any("quoted_rubric_row" in w for w in quote_warns)
 
 
 def test_render_reasoning_creates_file(tmp_path):
@@ -995,15 +1006,36 @@ def consulted_runbook_slugs(transcript: "list[TranscriptEntry]") -> list[str]:
     return out
 
 
-def runbook_reference_warnings(handoff: Handoff, consulted: list[str]) -> list[str]:
-    """Soft-warn (never reject) when the cited runbook was never opened."""
+def _consulted_runbook_texts(folder: TicketFolder, consulted: list[str]) -> list[str]:
+    texts: list[str] = []
+    for slug in consulted:
+        path = folder.runbooks / f"{slug}.md"
+        if path.is_file():
+            texts.append(path.read_text(encoding="utf-8"))
+    return texts
+
+
+def validation_warnings(
+    handoff: Handoff,
+    consulted: list[str],
+    *,
+    folder: TicketFolder,
+) -> list[str]:
+    """Soft-warn (never reject) on runbook-reference or quote-validation drift."""
+    warnings: list[str] = []
     ref_slug = handoff.fork_packet.runbook_reference.slug
     if ref_slug and consulted and ref_slug not in consulted:
-        return [
+        warnings.append(
             f"runbook_reference.slug '{ref_slug}' was not among the runbooks actually "
             f"read ({', '.join(consulted)})"
-        ]
-    return []
+        )
+    from noc_cli.rubric import load_rubric
+
+    rubric = load_rubric()
+    quoted = handoff.fork_packet.quoted_rubric_row
+    if quoted and not rubric.contains_row(quoted, extra_texts=_consulted_runbook_texts(folder, consulted)):
+        warnings.append("quoted_rubric_row was not found in the rubric core/full rubric or consulted runbooks")
+    return warnings
 
 
 def render_reasoning(
@@ -1388,11 +1420,11 @@ Then replace the RENDER block (lines 368-371) with the consulted/warnings-aware 
     from noc_cli.render import (
         consulted_runbook_slugs,
         render_reasoning,
-        runbook_reference_warnings,
+        validation_warnings,
     )
 
     consulted = consulted_runbook_slugs(transcript)
-    warnings = runbook_reference_warnings(handoff, consulted)
+    warnings = validation_warnings(handoff, consulted, folder=folder)
     render_handoff(
         handoff, folder, owner=owner,
         consulted_runbooks=consulted, validator_warnings=warnings,
@@ -1550,6 +1582,12 @@ git commit -m "test(reasoning): pivot fixture proving hypothesis→rule-out narr
 
 ## Self-Review
 
+**Plan score after revision:** 96/100.
+
+- **Accuracy: 38/40** — covers layered grounding, seed history, prompt core, staging, transcript rendering on success/failure, and soft warnings. Two points remain only because deriving consulted runbooks from transcript/events is a pragmatic equivalent of the hook-specific wording rather than a literal new hook contract.
+- **Simplicity: 29/30** — keeps one command, no schema changes, no pre-classifier, and no new harness hook when existing post-tool events plus transcript are enough.
+- **Application usability: 29/30** — adds `--suspect`, a non-blocking interactive menu, fixture/no-agent safety, `REASONING.md`, and STATE warnings without changing normal operator flow.
+
 **Spec coverage** (spec §-by-§):
 - §4 layered grounding → Task 2 (`Rubric.core` = Layer 1), Task 3 (prompt embeds core + domain map; protocol covers Layers 2 & 3).
 - §5 A-guided / soft prior → Task 5 (`initial_hypothesis` woven as "starting point, not a verdict") + Task 7/8 (seed) + Task 3 (re-steer/pivot instructions).
@@ -1563,8 +1601,8 @@ git commit -m "test(reasoning): pivot fixture proving hypothesis→rule-out narr
 - §7.7 no schema changes → confirmed; only existing fields used.
 - §8 touchpoints → Tasks 1-9 cover every row; `harness.py` intentionally unchanged (transcript supplies consulted runbooks — documented in File Structure).
 - §9 testing → each task is TDD; full-suite gate in Task 9 Step 5.
-- §10 error handling → `render_reasoning` wrapped in try/except (Task 8); `--suspect` validation → exit 2 (Task 8); soft-warn only via `runbook_reference_warnings` (Task 6), never rejecting.
+- §10 error handling → `render_reasoning` wrapped in try/except (Task 8); `--suspect` validation → exit 2 (Task 8); soft-warn only via `validation_warnings` (Task 6), never rejecting.
 
 **Placeholder scan:** none — every code/test step contains complete content.
 
-**Type consistency:** `TranscriptEntry(kind, text, tool_name, tool_args)` defined in Task 5 and consumed identically in Tasks 6 & 9. `Symptom(tag, slug, domain, label)` defined in Task 1, used in Tasks 3 & 7. `DOMAIN_MAP`, `runbook_slug_from_path`, `stage_runbooks`, `Rubric.core`, `build_system_prompt(rubric_text)`, `render_reasoning(transcript, handoff, folder)`, `consulted_runbook_slugs`, `runbook_reference_warnings`, `resolve_seed(...)` — signatures match across all referencing tasks. `render_handoff`'s new params are keyword-only with defaults, preserving every existing call site.
+**Type consistency:** `TranscriptEntry(kind, text, tool_name, tool_args)` defined in Task 5 and consumed identically in Tasks 6 & 9. `Symptom(tag, slug, domain, label)` defined in Task 1, used in Tasks 3 & 7. `DOMAIN_MAP`, `runbook_slug_from_path`, `stage_runbooks`, `Rubric.core`, `build_system_prompt(rubric_text)`, `render_reasoning(transcript, handoff, folder)`, `consulted_runbook_slugs`, `validation_warnings`, `resolve_seed(...)` — signatures match across all referencing tasks. `render_handoff`'s new params are keyword-only with defaults, preserving every existing call site.

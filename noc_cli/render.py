@@ -4,6 +4,7 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from noc_cli.models import (
     DraftsBlock,
@@ -13,7 +14,11 @@ from noc_cli.models import (
     IntakeBlock,
     PreflightBlock,
 )
+from noc_cli.runbooks import runbook_for_tag, runbook_slug_from_path
 from noc_cli.scaffold import TicketFolder
+
+if TYPE_CHECKING:
+    from noc_cli.agent.runner import TranscriptEntry
 
 _CANONICAL_FILES = (
     "INTAKE.md",
@@ -183,9 +188,15 @@ def _yaml_q(text: str) -> str:
     return f'"{escaped}"'
 
 
-def _render_state(handoff: Handoff, owner: str) -> str:
+def _render_state(
+    handoff: Handoff,
+    owner: str,
+    consulted_runbooks: list[str] | None = None,
+    validator_warnings: list[str] | None = None,
+) -> str:
     fp = handoff.fork_packet
     intake = handoff.intake
+    pivoted = _pivoted(handoff, consulted_runbooks or [])
     lines = [
         "---",
         f"ticket_id: {intake.ticket_id}",
@@ -216,10 +227,25 @@ def _render_state(handoff: Handoff, owner: str) -> str:
         "",
         f"> {fp.quoted_rubric_row}" if fp.quoted_rubric_row else "",
     ]
+    consulted_runbooks = consulted_runbooks or []
+    validator_warnings = validator_warnings or []
+    if consulted_runbooks:
+        lines += ["", f"Runbooks consulted: {', '.join(consulted_runbooks)}"]
+    lines += ["", f"Pivoted: {'yes' if pivoted else 'no'}"]
+    if validator_warnings:
+        lines += ["", "## Validator Warnings"]
+        lines += [f"- {warning}" for warning in validator_warnings]
     return "\n".join(lines)
 
 
-def render_handoff(handoff: Handoff, folder: TicketFolder, owner: str = "") -> None:
+def render_handoff(
+    handoff: Handoff,
+    folder: TicketFolder,
+    owner: str = "",
+    *,
+    consulted_runbooks: list[str] | None = None,
+    validator_warnings: list[str] | None = None,
+) -> None:
     """Write the five canonical files into `folder.root`.
 
     Each file is fully written to a temp directory under `dest`, then moved
@@ -236,7 +262,7 @@ def render_handoff(handoff: Handoff, folder: TicketFolder, owner: str = "") -> N
         "EVIDENCE_PREFLIGHT.md": _render_preflight(handoff.evidence_preflight),
         "FORK_PACKET.md": _render_fork_packet(handoff.fork_packet),
         "DRAFTS.md": _render_drafts(handoff.drafts),
-        "STATE.md": _render_state(handoff, owner),
+        "STATE.md": _render_state(handoff, owner, consulted_runbooks, validator_warnings),
     }
 
     with tempfile.TemporaryDirectory(dir=dest, prefix=".render-tmp-") as td:
@@ -247,3 +273,139 @@ def render_handoff(handoff: Handoff, folder: TicketFolder, owner: str = "") -> N
             src_file = tmp / name
             dst_file = dest / name
             shutil.move(str(src_file), dst_file)
+
+
+def consulted_runbook_slugs(transcript: "list[TranscriptEntry]") -> list[str]:
+    """Return ordered, de-duplicated runbook slugs the agent actually read."""
+    slugs: list[str] = []
+    for entry in transcript:
+        if getattr(entry, "kind", "") != "tool":
+            continue
+        if getattr(entry, "tool_name", "") != "Read":
+            continue
+        slug = runbook_slug_from_path(getattr(entry, "tool_args", ""))
+        if slug and slug not in slugs:
+            slugs.append(slug)
+    return slugs
+
+
+def _consulted_runbook_texts(folder: TicketFolder, consulted: list[str]) -> list[str]:
+    texts: list[str] = []
+    for slug in consulted:
+        path = folder.runbooks / f"{slug}.md"
+        if path.is_file():
+            texts.append(path.read_text(encoding="utf-8"))
+    return texts
+
+
+def _rubric_contains_row(quoted: str, extra_texts: list[str]) -> bool:
+    from noc_cli.rubric import load_rubric
+
+    rubric = load_rubric()
+    return rubric.contains_row(quoted, extra_texts=extra_texts)
+
+
+def _pivoted(handoff: Handoff, consulted: list[str]) -> bool:
+    fp = handoff.fork_packet
+    ref_slug = fp.runbook_reference.slug
+    seed = runbook_for_tag(handoff.intake.initial_hypothesis)
+    seed_slug = seed[0] if seed else ""
+    if seed_slug and ref_slug and seed_slug != ref_slug:
+        return True
+    if consulted and ref_slug and consulted[-1] != ref_slug:
+        return True
+    text = " ".join(
+        part
+        for part in (handoff.intake.initial_hypothesis, fp.reasoning, fp.runbook_reference.section)
+        if part
+    ).lower()
+    pivot_terms = ("pivot", "re-steer", "reclassified", "ruled out", "leaving")
+    return any(term in text for term in pivot_terms)
+
+
+def validation_warnings(
+    handoff: Handoff,
+    consulted: list[str],
+    *,
+    folder: TicketFolder,
+) -> list[str]:
+    """Soft-warn on runbook-reference or quote drift; never reject a handoff."""
+    warnings: list[str] = []
+    ref_slug = handoff.fork_packet.runbook_reference.slug
+    if ref_slug:
+        if not consulted:
+            warnings.append(
+                f"runbook_reference.slug '{ref_slug}' was cited, but no runbooks were read"
+            )
+        elif ref_slug not in consulted:
+            warnings.append(
+                f"runbook_reference.slug '{ref_slug}' was not among the runbooks actually "
+                f"read ({', '.join(consulted)})"
+            )
+
+    quoted = handoff.fork_packet.quoted_rubric_row
+    extra_texts = _consulted_runbook_texts(folder, consulted)
+    if quoted and not _rubric_contains_row(quoted, extra_texts):
+        warnings.append(
+            "quoted_rubric_row was not found in the rubric or consulted runbooks"
+        )
+    return warnings
+
+
+def render_reasoning(
+    transcript: "list[TranscriptEntry]",
+    handoff: Handoff | None,
+    folder: TicketFolder,
+) -> None:
+    """Write REASONING.md from the captured transcript and optional handoff."""
+    consulted = consulted_runbook_slugs(transcript)
+    if handoff is not None:
+        fp = handoff.fork_packet
+        ticket = handoff.intake.ticket_id
+        hypothesis = handoff.intake.initial_hypothesis or "(none)"
+        final = f"Fork {fp.fork_letter.value} - {fp.symptom_tag} - {fp.confidence.value}"
+        pivoted = _pivoted(handoff, consulted)
+    else:
+        ticket = folder.root.name
+        hypothesis = "(unknown - handoff failed to parse)"
+        final = "(no handoff - agent output was unparseable)"
+        pivoted = False
+
+    turns = sum(1 for entry in transcript if getattr(entry, "kind", "") in {"reasoning", "tool"})
+    lines = [
+        f"# REASONING - Ticket #{ticket}",
+        "",
+        f"**Hypothesis:** {hypothesis} -> **Final:** {final}",
+        f"**Runbooks consulted:** {', '.join(consulted) if consulted else '(none)'}",
+        f"Pivoted: {'yes' if pivoted else 'no'}",
+        f"**Turns:** {turns}",
+        "",
+        "## Transcript",
+        "",
+    ]
+
+    step = 0
+    for entry in transcript:
+        kind = getattr(entry, "kind", "")
+        if kind == "reasoning":
+            step += 1
+            lines += [f"### {step}. Reasoning", "", getattr(entry, "text", ""), ""]
+        elif kind == "tool":
+            tool = getattr(entry, "tool_name", "")
+            args = getattr(entry, "tool_args", "")
+            lines += [f"> {tool} {args}".rstrip(), ""]
+        elif kind == "tool_result":
+            lines += ["> result", "", getattr(entry, "text", ""), ""]
+
+    if handoff is not None:
+        fp = handoff.fork_packet
+        decisive = "; ".join(handoff.evidence_preflight.decisive_evidence) or "(none)"
+        lines += [
+            "## Decision summary (from handoff)",
+            "",
+            f"- Decisive evidence: {decisive}",
+            f"- Fork: {fp.fork_letter.value} - {fp.confidence.value}",
+            f"- Reasoning: {fp.reasoning}",
+        ]
+
+    (folder.root / "REASONING.md").write_text("\n".join(lines), encoding="utf-8")

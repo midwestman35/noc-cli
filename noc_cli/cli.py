@@ -180,10 +180,31 @@ def investigate(
     no_agent: bool = typer.Option(
         False, "--no-agent", help="Dry path: scaffold + gather + redact; no LLM"
     ),
+    suspect: Optional[str] = typer.Option(
+        None,
+        "--suspect",
+        help="Runbook slug to seed grounding (e.g. low-audio); skips the interactive prompt.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
     """Run the L3 agent investigation on a Zendesk ticket and produce a triage handoff."""
+    import sys
+
+    from noc_cli.seed import resolve_seed
+
     branding.render_banner()
+    interactive = sys.stdin.isatty() and fixture is None and not no_agent
+    try:
+        initial_hypothesis = resolve_seed(
+            suspect,
+            interactive=interactive,
+            prompt_fn=lambda label: typer.prompt(label, default=""),
+            echo_fn=typer.echo,
+        )
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2)
+
     asyncio.run(
         _run_investigate(
             ticket_id=ticket_id,
@@ -192,8 +213,25 @@ def investigate(
             force=force,
             fixture=fixture,
             no_agent=no_agent,
+            initial_hypothesis=initial_hypothesis,
             verbose=verbose,
         )
+    )
+
+
+def _handoff_with_initial_hypothesis(
+    handoff: "Handoff",
+    initial_hypothesis: str,
+) -> "Handoff":
+    if not initial_hypothesis:
+        return handoff
+    return handoff.model_copy(
+        deep=True,
+        update={
+            "intake": handoff.intake.model_copy(
+                update={"initial_hypothesis": initial_hypothesis}
+            )
+        },
     )
 
 
@@ -204,6 +242,7 @@ async def _run_investigate(
     force: bool,
     fixture: Optional[Path],
     no_agent: bool,
+    initial_hypothesis: str,
     verbose: bool,
 ) -> None:
     # Lazy imports keep `noc-cli --help` and the other commands from loading the
@@ -317,7 +356,7 @@ async def _run_investigate(
         from noc_cli.zendesk import ZendeskClient
 
         zd_for_history = ZendeskClient(cfg)
-        symptom_tag = "[unclassified]"  # refined by the agent; default for seeding
+        symptom_tag = initial_hypothesis or "[unclassified]"  # analyst seed; agent re-steers
         candidates = seed_history(
             symptom_tag, zendesk_client=zd_for_history, memory_store=mem_store
         )
@@ -331,9 +370,8 @@ async def _run_investigate(
     # ── Agent (or fixture replay) ─────────────────────────────────────────────
     tracker.set_phase(InvestigatePhase.AGENT)
     from noc_cli.models import Handoff
-    from noc_cli.render import render_handoff
-
     handoff: Optional[Handoff] = None
+    transcript = []
     if fixture is not None:
         import json
 
@@ -349,15 +387,23 @@ async def _run_investigate(
         from noc_cli.rubric import load_rubric
 
         rubric = load_rubric()
-        system_prompt = build_system_prompt(rubric.text)
+        system_prompt = build_system_prompt(rubric.core)
         runner_result = await run_agent(
             ticket_id=ticket_id,
             folder=folder,
             system_prompt=system_prompt,
             history_context=history_context,
+            initial_hypothesis=initial_hypothesis,
         )
+        transcript = runner_result.transcript
         handoff = runner_result.handoff
         if handoff is None:
+            try:
+                from noc_cli.render import render_reasoning
+
+                render_reasoning(transcript, None, folder)
+            except Exception:
+                pass
             console.print(
                 f"[red]Agent failed after 2 attempts. Raw output stashed to:[/red] "
                 f"{runner_result.stash_path}"
@@ -367,7 +413,27 @@ async def _run_investigate(
 
     # ── Render (owner recorded → drives the soft-lock on re-run) ─────────────
     tracker.set_phase(InvestigatePhase.RENDER)
-    render_handoff(handoff, folder, owner=owner)
+    from noc_cli.render import (
+        consulted_runbook_slugs,
+        render_handoff,
+        render_reasoning,
+        validation_warnings,
+    )
+
+    handoff = _handoff_with_initial_hypothesis(handoff, initial_hypothesis)
+    consulted = consulted_runbook_slugs(transcript)
+    warnings = validation_warnings(handoff, consulted, folder=folder)
+    render_handoff(
+        handoff,
+        folder,
+        owner=owner,
+        consulted_runbooks=consulted,
+        validator_warnings=warnings,
+    )
+    try:
+        render_reasoning(transcript, handoff, folder)
+    except Exception:
+        pass
     tracker.mark_done("Report rendered")
 
     # ── Memory append ─────────────────────────────────────────────────────────

@@ -1,8 +1,14 @@
 import json
 from pathlib import Path
 
+from noc_cli.agent.runner import TranscriptEntry
 from noc_cli.models import Handoff
-from noc_cli.render import render_handoff
+from noc_cli.render import (
+    consulted_runbook_slugs,
+    render_handoff,
+    render_reasoning,
+    validation_warnings,
+)
 from noc_cli.scaffold import scaffold_ticket
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -11,6 +17,30 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def load_good() -> Handoff:
     data = json.loads((FIXTURES / "handoff_good.json").read_text())
     return Handoff.model_validate(data)
+
+
+def load_pivot() -> Handoff:
+    data = json.loads((FIXTURES / "handoff_pivot.json").read_text())
+    return Handoff.model_validate(data)
+
+
+def _sample_transcript():
+    return [
+        TranscriptEntry(kind="reasoning", text="Accepting analyst hypothesis [apex]."),
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/apex.md"),
+        TranscriptEntry(kind="reasoning", text="Three stations flipped — Fork B."),
+        TranscriptEntry(kind="result", text='{"...": "..."}'),
+    ]
+
+
+def test_consulted_runbook_slugs_only_counts_read_events():
+    transcript = [
+        TranscriptEntry(kind="tool", tool_name="Grep", tool_args="runbooks/apex.md"),
+        TranscriptEntry(kind="tool", tool_name="Glob", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/no-ani.md"),
+    ]
+
+    assert consulted_runbook_slugs(transcript) == ["no-ani"]
 
 
 def test_all_five_files_created(tmp_path):
@@ -130,3 +160,131 @@ def test_render_is_atomic_on_failure(tmp_path):
     render_handoff(load_good(), folder)
     for name in ("INTAKE.md", "EVIDENCE_PREFLIGHT.md", "FORK_PACKET.md", "DRAFTS.md", "STATE.md"):
         assert (folder.root / name).exists()
+
+
+def test_consulted_runbook_slugs_from_transcript():
+    assert consulted_runbook_slugs(_sample_transcript()) == ["apex"]
+    assert consulted_runbook_slugs([]) == []
+
+
+def test_validation_warnings_flags_runbook_mismatch_and_bad_quote(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    handoff = load_good()
+
+    assert validation_warnings(handoff, ["apex"], folder=folder) == []
+    warns = validation_warnings(handoff, ["low-audio"], folder=folder)
+    assert len(warns) == 1
+    assert "apex" in warns[0]
+
+    bad_quote = handoff.model_copy(
+        deep=True,
+        update={
+            "fork_packet": handoff.fork_packet.model_copy(
+                update={"quoted_rubric_row": "not a real rubric row"}
+            )
+        },
+    )
+    quote_warns = validation_warnings(bad_quote, ["apex"], folder=folder)
+    assert any("quoted_rubric_row" in warning for warning in quote_warns)
+
+
+def test_validation_warnings_flags_cited_runbook_when_none_consulted(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    handoff = load_good()
+
+    warns = validation_warnings(handoff, [], folder=folder)
+
+    assert any("apex" in warning and "no runbooks" in warning for warning in warns)
+
+
+def test_render_reasoning_creates_file(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    render_reasoning(_sample_transcript(), load_good(), folder)
+
+    md = (folder.root / "REASONING.md").read_text(encoding="utf-8")
+    assert "REASONING" in md
+    assert "apex" in md
+    assert "Fork B" in md
+    assert "Decision summary" in md
+
+
+def test_render_reasoning_handles_none_handoff(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    render_reasoning(_sample_transcript(), None, folder)
+
+    md = (folder.root / "REASONING.md").read_text(encoding="utf-8")
+    assert "REASONING" in md
+    assert "unparseable" in md.lower() or "unknown" in md.lower()
+
+
+def test_state_md_includes_consulted_and_warnings(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18432)
+    render_handoff(
+        load_good(),
+        folder,
+        consulted_runbooks=["apex"],
+        validator_warnings=["slug mismatch example"],
+    )
+
+    state = (folder.root / "STATE.md").read_text(encoding="utf-8")
+    assert "Runbooks consulted: apex" in state
+    assert "Validator Warnings" in state
+    assert "slug mismatch example" in state
+
+
+def test_reasoning_and_state_include_pivot_indicator(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18443)
+    transcript = [
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
+    ]
+    handoff = load_pivot()
+
+    render_handoff(handoff, folder, consulted_runbooks=["low-audio"])
+    render_reasoning(transcript, handoff, folder)
+
+    state = (folder.root / "STATE.md").read_text(encoding="utf-8")
+    reasoning = (folder.root / "REASONING.md").read_text(encoding="utf-8")
+    assert "Pivoted: yes" in state
+    assert "Pivoted: yes" in reasoning
+
+
+def test_seed_to_final_tag_change_marks_pivoted(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18443)
+    handoff = load_pivot().model_copy(
+        deep=True,
+        update={
+            "fork_packet": load_pivot().fork_packet.model_copy(
+                update={
+                    "runbook_reference": load_pivot().fork_packet.runbook_reference.model_copy(
+                        update={"slug": "apex"}
+                    ),
+                    "reasoning": "Media evidence did not match.",
+                }
+            )
+        },
+    )
+    transcript = [
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/apex.md"),
+    ]
+
+    render_reasoning(transcript, handoff, folder)
+
+    reasoning = (folder.root / "REASONING.md").read_text(encoding="utf-8")
+    assert "Pivoted: yes" in reasoning
+
+
+def test_render_reasoning_surfaces_pivot_fixture(tmp_path):
+    folder = scaffold_ticket(tmp_path, 18443)
+    transcript = [
+        TranscriptEntry(kind="reasoning", text="Accepting analyst hypothesis [low audio]."),
+        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(kind="reasoning", text="RTP is healthy; pivoting away from media."),
+    ]
+
+    render_reasoning(transcript, load_pivot(), folder)
+
+    md = (folder.root / "REASONING.md").read_text(encoding="utf-8")
+    assert "low-audio" in md
+    assert "pivoting away from media" in md
+    assert "Fork C" in md
