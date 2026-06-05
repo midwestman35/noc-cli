@@ -23,8 +23,7 @@ def _cfg(tmp_path) -> Config:
     )
 
 
-async def test_run_investigation_no_agent_emits_phase_lines(tmp_path, monkeypatch):
-    monkeypatch.delenv("NOC_TICKETS_ROOT", raising=False)
+async def test_run_investigation_no_agent_emits_phase_lines(tmp_path):
     from noc_cli.investigate import run_investigation
     from noc_cli.watch.inbox import detect_phase
 
@@ -42,3 +41,34 @@ async def test_run_investigation_no_agent_emits_phase_lines(tmp_path, monkeypatc
     assert "Scaffold ready" in detected
     assert "Evidence gathered" in detected
     assert "PII redacted" in detected
+
+
+async def test_run_investigation_soft_lock_raises(tmp_path):
+    from noc_cli.investigate import InvestigationError, run_investigation
+
+    # Pre-create the ticket folder + a STATE.md claimed by a different owner.
+    folder = tmp_path / "77"
+    folder.mkdir(parents=True)
+    (folder / "STATE.md").write_text('owner: "someone-else"\n', encoding="utf-8")
+
+    with pytest.raises(InvestigationError):
+        await run_investigation(
+            ticket_id=77,
+            config=_cfg(tmp_path),
+            tickets_root=tmp_path,
+            owner="me",
+            no_agent=True,
+        )
+
+
+async def test_run_investigation_default_on_line_does_not_crash(tmp_path):
+    from noc_cli.investigate import run_investigation
+
+    root = await run_investigation(
+        ticket_id=88,
+        config=_cfg(tmp_path),
+        tickets_root=tmp_path,
+        owner="me",
+        no_agent=True,
+    )  # on_line omitted -> _noop default
+    assert root == tmp_path / "88"

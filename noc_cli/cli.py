@@ -241,8 +241,7 @@ async def _run_investigate(
     initial_hypothesis: str,
     verbose: bool,
 ) -> None:
-    # Lazy imports keep `noc-cli --help` and the other commands from loading the
-    # heavy investigate dependency graph (agent SDK, textual, etc.).
+    # Import the investigation pipeline lazily so the other CLI commands don't pay for it.
     import os
 
     from rich.console import Console
@@ -258,7 +257,7 @@ async def _run_investigate(
         root = await run_investigation(
             ticket_id=ticket_id,
             config=cfg,
-            tickets_root=Path(cfg.tickets_root),
+            tickets_root=Path(os.environ.get("NOC_TICKETS_ROOT", str(cfg.tickets_root))),
             owner=owner,
             initial_hypothesis=initial_hypothesis,
             extra_files=extra_files,

@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
-from noc_cli.config import Config
+from noc_cli.config import Config, db_path
+
+if TYPE_CHECKING:
+    from noc_cli.evidence import PasteInput
 
 
 class InvestigationError(RuntimeError):
@@ -24,7 +27,7 @@ async def run_investigation(
     owner: str,
     initial_hypothesis: str = "",
     extra_files: Optional[list[Path]] = None,
-    pastes: Optional[list] = None,
+    pastes: "Optional[list[str | PasteInput]]" = None,
     force: bool = False,
     fixture: Optional[Path] = None,
     no_agent: bool = False,
@@ -46,8 +49,6 @@ async def run_investigation(
     )
     from noc_cli.memory import InvestigationRecord, MemoryStore, append_investigation
     from noc_cli.scaffold import SoftLockConflict, preflight_soft_lock, scaffold_ticket
-
-    tickets_root = Path(os.environ.get("NOC_TICKETS_ROOT", str(tickets_root)))
 
     folder = scaffold_ticket(tickets_root, ticket_id)
     try:
@@ -109,8 +110,6 @@ async def run_investigation(
     if no_agent:
         emit(f"Ticket #{ticket_id} complete (no-agent) — {folder.root}")
         return folder.root
-
-    from noc_cli.config import db_path
 
     mem_db = Path(os.environ.get("NOC_DB_PATH", str(db_path())))
     mem_md = tickets_root / "MEMORY.md"
