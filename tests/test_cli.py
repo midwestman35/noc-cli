@@ -311,3 +311,16 @@ def test_watch_command_rejects_invalid_interval():
     """--interval must be a positive integer (min=1)."""
     result = runner.invoke(app, ["watch", "--interval", "0"])
     assert result.exit_code != 0
+
+
+def test_bare_invocation_launches_tui(monkeypatch, tmp_path):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    called = {}
+
+    def fake_launch():
+        called["launched"] = True
+
+    monkeypatch.setattr("noc_cli.cli._launch_tui", fake_launch)
+    result = runner.invoke(app, [])
+    assert result.exit_code == 0, result.output
+    assert called.get("launched") is True

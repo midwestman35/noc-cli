@@ -16,7 +16,7 @@ from noc_cli.setup import run_setup
 app = typer.Typer(
     name="noc-cli",
     help="Read-only NOC triage assistant for Carbyne APEX NG911/E911.",
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
 config_app = typer.Typer(
     help="Read and edit noc-cli configuration.",
@@ -52,8 +52,9 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -62,7 +63,9 @@ def main(
         help="Show the version and exit.",
     ),
 ) -> None:
-    """Read-only NOC triage assistant."""
+    """Read-only NOC triage assistant. Run with no command to open the inbox."""
+    if ctx.invoked_subcommand is None:
+        _launch_tui()
 
 
 @app.command()
@@ -507,6 +510,46 @@ def scout(
     except Exception as exc:
         typer.secho(f"Scout failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
+
+
+def _launch_tui(view: str = "", assignee: str = "", interval: int = 60) -> None:
+    from noc_cli import store
+    from noc_cli.config import db_path
+    from noc_cli.tui.watch_app import WatchApp
+    from noc_cli.watch.notify import build_notifier
+    from noc_cli.watch.state import WatchState
+    from noc_cli.zendesk import ZendeskClient, ZendeskError
+
+    cfg = load_config()
+    if view:
+        cfg = cfg.model_copy(update={"watch_view": view})
+    if assignee:
+        cfg = cfg.model_copy(update={"watch_assignee": assignee})
+    if not cfg.watch_view:
+        typer.secho(
+            "Error: no view configured. Run `noc-cli setup`.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    try:
+        client = ZendeskClient(cfg)
+    except ZendeskError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    conn = store.connect(db_path())
+    try:
+        ws = WatchState(conn)
+        notifier = build_notifier(cfg.notify)
+        WatchApp(
+            config=cfg,
+            client=client,
+            watch_state=ws,
+            notifier=notifier,
+            poll_interval=interval,
+        ).run()
+    finally:
+        conn.close()
 
 
 @app.command()
