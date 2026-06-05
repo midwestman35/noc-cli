@@ -70,6 +70,54 @@ def test_run_scout_full_pipeline(tmp_path):
 
     assert [r.ticket_id for r in report.ranked] == [1]
     assert report.generated_at == NOW
+    assert report.candidates_screened == 1
+    assert report.reports_parsed == 1
+    assert report.dropped == 0
+
+
+def test_run_scout_counts_dropped_screens(tmp_path):
+    tickets = [
+        Ticket(id=1, subject="a", status="open", priority="high",
+               updated_at=NOW - timedelta(days=8)),
+        Ticket(id=2, subject="b", status="open", priority="high",
+               updated_at=NOW - timedelta(days=9)),
+    ]
+
+    def query_fn(*, prompt, options):
+        if prompt.startswith("Triability pre-screens"):
+            out = '{"ranked": [{"ticket_id": 1, "rank": 1, "rationale": "ok"}]}'
+        elif "Ticket #2" in prompt:
+            out = "not json at all"  # this screen is dropped
+        else:
+            out = (
+                '{"ticket_id": 1, "runbook_id": "low-audio", '
+                '"runbook_match_confidence": 0.8, "triage_ready": true, '
+                '"missing_evidence": [], "one_line": "ok"}'
+            )
+
+        async def gen():
+            class FakeResult:
+                result = out
+
+            yield FakeResult()
+
+        return gen()
+
+    report = _run(
+        run_scout(
+            client=_FakeClient(tickets),
+            view_id="6490757606044",
+            workspace=tmp_path,
+            now=NOW,
+            query_fn=query_fn,
+            screen_options_factory=lambda: None,
+            synth_options_factory=lambda: None,
+        )
+    )
+
+    assert report.candidates_screened == 2
+    assert report.reports_parsed == 1
+    assert report.dropped == 1
 
 
 def test_run_scout_empty_candidates_skips_agent(tmp_path):

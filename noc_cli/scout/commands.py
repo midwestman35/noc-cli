@@ -109,6 +109,13 @@ def run_scout_list(cfg, *, top_k: int, min_staleness_days: int) -> None:
         cfg, top_k=top_k, min_staleness_days=min_staleness_days
     )
     typer.echo(render_scout_report(report))
+    if report.dropped:
+        typer.secho(
+            f"Note: {report.dropped} of {report.candidates_screened} screens "
+            "could not be parsed and were dropped from the ranking.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 def take_ticket(cfg, *, ticket_id: int, min_staleness_days: int, yes: bool) -> None:

@@ -48,6 +48,9 @@ async def run_scout(
         concurrency=concurrency,
         options_factory=screen_options_factory,
     )
-    return await synthesize(
+    report = await synthesize(
         reports, query_fn=query_fn, now=now, options_factory=synth_options_factory
     )
+    report.candidates_screened = len(candidates)
+    report.reports_parsed = len(reports)
+    return report

@@ -49,3 +49,13 @@ class ScoutReport(BaseModel):
 
     generated_at: datetime | None = None
     ranked: list[RankedCandidate] = Field(default_factory=list)
+    candidates_screened: int = 0
+    reports_parsed: int = 0
+
+    @property
+    def dropped(self) -> int:
+        """Screens whose JSON could not be parsed and were silently dropped.
+
+        Surfaced so operators do not mistake a short list for a quiet backlog.
+        """
+        return max(self.candidates_screened - self.reports_parsed, 0)

@@ -67,6 +67,22 @@ def test_scout_lists_candidates():
     assert "low-audio" in result.output
 
 
+def test_scout_list_warns_about_dropped_screens():
+    report = ScoutReport(
+        generated_at=NOW,
+        ranked=_REPORT.ranked,
+        candidates_screened=3,
+        reports_parsed=1,
+    )
+    with mock.patch(
+        "noc_cli.scout.commands.run_scout_report", return_value=report
+    ):
+        result = runner.invoke(app, ["scout"])
+
+    assert result.exit_code == 0, result.output
+    assert "2 of 3 screens" in result.output
+
+
 def test_scout_default_min_staleness_is_7_days():
     with mock.patch("noc_cli.scout.commands.run_scout_report", return_value=_REPORT) as run:
         result = runner.invoke(app, ["scout"])
