@@ -9,7 +9,6 @@ from pydantic import ValidationError
 
 from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import Candidate, ScreenReport
-from noc_cli.scout.profiles import SCREEN, build_options
 
 SCREEN_SYSTEM_PROMPT = (
     "You are a NOC triage-readiness pre-screener. Given one stale ticket and "
@@ -40,20 +39,10 @@ async def screen_ticket(
 ) -> ScreenReport | None:
     """Run one read-only screen and parse its ScreenReport."""
     if options_factory is None:
-        from noc_cli.agent.harness import build_hooks  # noqa: PLC0415
+        from noc_cli.scout.hooks import build_scout_options  # noqa: PLC0415
 
-        workspace = runbooks_dir.parent
-        hooks = build_hooks(
-            sandbox_root=workspace,
-            events_path=workspace / "events.jsonl",
-            restrict_read_tools=True,
-        )
-        options_factory = lambda: build_options(
-            SCREEN,
-            system_prompt=SCREEN_SYSTEM_PROMPT,
-            cwd=workspace,
-            hooks=hooks,
-            options_cls=options_cls,
+        options_factory, _ = build_scout_options(
+            runbooks_dir.parent, options_cls=options_cls
         )
 
     prompt = (

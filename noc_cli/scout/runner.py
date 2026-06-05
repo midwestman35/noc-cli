@@ -5,10 +5,9 @@ from datetime import datetime
 from pathlib import Path
 
 from noc_cli.scout.models import ScoutReport
-from noc_cli.scout.profiles import SCREEN, SYNTHESIS, build_options
 from noc_cli.scout.rank import rank_candidates
-from noc_cli.scout.screen import SCREEN_SYSTEM_PROMPT, screen_candidates
-from noc_cli.scout.synthesize import SYNTHESIS_SYSTEM_PROMPT, synthesize
+from noc_cli.scout.screen import screen_candidates
+from noc_cli.scout.synthesize import synthesize
 from noc_cli.scout.workspace import materialize_workspace
 
 
@@ -36,24 +35,11 @@ async def run_scout(
     runbooks_dir = materialize_workspace(workspace)
 
     if screen_options_factory is None or synth_options_factory is None:
-        from noc_cli.agent.harness import build_hooks  # noqa: PLC0415
+        from noc_cli.scout.hooks import build_scout_options  # noqa: PLC0415
 
-        hooks = build_hooks(
-            sandbox_root=workspace,
-            events_path=workspace / "events.jsonl",
-            restrict_read_tools=True,
-        )
-        if screen_options_factory is None:
-            screen_options_factory = lambda: build_options(
-                SCREEN, system_prompt=SCREEN_SYSTEM_PROMPT, cwd=workspace, hooks=hooks
-            )
-        if synth_options_factory is None:
-            synth_options_factory = lambda: build_options(
-                SYNTHESIS,
-                system_prompt=SYNTHESIS_SYSTEM_PROMPT,
-                cwd=workspace,
-                hooks=hooks,
-            )
+        default_screen, default_synth = build_scout_options(workspace)
+        screen_options_factory = screen_options_factory or default_screen
+        synth_options_factory = synth_options_factory or default_synth
 
     reports = await screen_candidates(
         candidates,
