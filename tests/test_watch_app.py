@@ -315,7 +315,7 @@ async def test_new_comment_appears_after_second_poll(db_conn, tmp_path):
         assert "Second comment arrived." in app.current_detail_text
 
 
-async def test_tab_cycles_to_file_and_escape_returns_to_summary(db_conn, tmp_path):
+async def test_tab_cycles_to_file(db_conn, tmp_path):
     _write_state(tmp_path, 707)
     app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
 
@@ -324,11 +324,6 @@ async def test_tab_cycles_to_file_and_escape_returns_to_summary(db_conn, tmp_pat
         await pilot.press("tab")
         await pilot.pause()
         assert "# Intake for 707" in app.current_detail_text
-
-        await pilot.press("escape")
-        await pilot.pause()
-
-    assert "Ticket: ZD-707" in app.current_detail_text
 
 
 async def test_shift_tab_cycles_back_from_file_to_summary(db_conn, tmp_path):
@@ -348,35 +343,7 @@ async def test_shift_tab_cycles_back_from_file_to_summary(db_conn, tmp_path):
     assert "# Intake for 717" not in app.current_detail_text
 
 
-async def test_enter_focuses_detail_pane(db_conn, tmp_path):
-    ticket = _ticket(727)
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
-
-    async with app.run_test(size=(120, 40)) as pilot:
-        await _poll(app, pilot)
-        await pilot.press("enter")
-        await pilot.pause()
-        detail = app.query_one("#detail")
-        assert app.focused is detail
-
-
-async def test_r_key_refreshes_live_queue(db_conn, tmp_path):
-    from noc_cli.tui.watch_app import TicketList
-
-    first = [_ticket(737)]
-    second = [_ticket(738)]
-    app = _make_app(_make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn))
-
-    async with app.run_test(size=(120, 40)) as pilot:
-        await _poll(app, pilot)
-        await pilot.press("r")
-        await app.workers.wait_for_complete()
-        await pilot.pause()
-        ticket_list = app.query_one("#ticket-list", TicketList)
-
-    assert [row.ticket_id for row in ticket_list.rows] == [738]
-
-
+@pytest.mark.skip(reason="i-key removed; investigate via /investigate — rewritten in Task 8")
 async def test_i_launches_investigate_for_selected_ticket(db_conn, tmp_path):
     import threading
 
@@ -416,6 +383,7 @@ async def test_i_launches_investigate_for_selected_ticket(db_conn, tmp_path):
     assert "808" in cmd
 
 
+@pytest.mark.skip(reason="i-key removed; investigate via /investigate — rewritten in Task 8")
 async def test_i_is_single_flight_while_running(db_conn, tmp_path):
     ticket = _ticket(818)
     app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
@@ -513,33 +481,65 @@ async def test_pulse_marks_changed_ticket_then_expires(db_conn, tmp_path):
         assert app._current_pulse_ids() == set()
 
 
-async def test_o_opens_zendesk_ticket_url(db_conn, tmp_path):
-    ticket = _ticket(909)
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
+async def test_command_box_is_focused_and_routes_slash_refresh(db_conn, tmp_path):
+    from textual.widgets import Input
 
+    first = [_ticket(601)]
+    second = [_ticket(602)]
+    app = _make_app(_make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        assert app.focused is box
+        box.value = "/refresh"
+        await box.action_submit()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        ids = [r.ticket_id for r in app.query_one("#ticket-list").rows]
+    assert ids == [602]
+    assert box.value == ""
+
+
+async def test_slash_open_routes_to_browser(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(909)]]), WatchState(db_conn))
     with patch("webbrowser.open") as mock_open:
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
-            await pilot.press("o")
+            box = app.query_one("#command", Input)
+            box.value = "/open"
+            await box.action_submit()
             await pilot.pause()
-
     mock_open.assert_called_once_with("https://carbyne.zendesk.com/agent/tickets/909")
 
 
-async def test_y_copies_current_summary_or_activity(db_conn, tmp_path):
-    ticket = _ticket(1001, subject="No ANI")
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
+async def test_help_lists_commands_in_detail(db_conn, tmp_path):
+    from textual.widgets import Input
 
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/help"
+        await box.action_submit()
+        await pilot.pause()
+    assert "/investigate" in app.current_detail_text
+
+
+async def test_slash_copy_copies_current_detail(db_conn, tmp_path):
+    from textual.widgets import Input
     from noc_cli.tui.watch_app import WatchApp
 
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1001, subject="No ANI")]]), WatchState(db_conn))
     with patch.object(WatchApp, "copy_to_clipboard", autospec=True) as mock_copy:
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
-            await pilot.press("y")
+            box = app.query_one("#command", Input)
+            box.value = "/copy"
+            await box.action_submit()
             await pilot.pause()
-
     assert mock_copy.call_count == 1
-    assert mock_copy.call_args[0][0] is app
     assert "Ticket: ZD-1001" in mock_copy.call_args[0][1]
 
 

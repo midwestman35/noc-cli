@@ -17,10 +17,11 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Footer, Static
+from textual.widgets import Footer, Input, Static
 
 from noc_cli import __version__
 from noc_cli.config import Config
+from noc_cli.tui.command import KNOWN_COMMANDS, parse_input
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
 from noc_cli.watch.diff import ChangeEvent, ChangeKind, _iso, _latest_public_comment, diff_tickets
@@ -130,6 +131,10 @@ Screen { layout: vertical; layers: base overlay; }
 #detail-content {
     width: 1fr;
     height: auto;
+}
+#command {
+    height: 3;
+    border: round $accent;
 }
 """
 
@@ -373,18 +378,13 @@ class WatchApp(App[None]):
     CSS = _CSS
     BINDINGS = [
         Binding("up", "cursor_up", "Up", show=False, priority=True),
-        Binding("k", "cursor_up", "Up", show=True),
         Binding("down", "cursor_down", "Down", show=False, priority=True),
-        Binding("j", "cursor_down", "Down", show=True),
-        Binding("enter", "focus_detail", "Detail", show=True),
-        Binding("i", "investigate", "Investigate", show=True),
-        Binding("tab", "next_detail_file", "Next file", show=True, priority=True),
-        Binding("shift+tab", "previous_detail_file", "Prev file", show=True, priority=True),
-        Binding("escape", "summary", "Summary", show=True, priority=True),
-        Binding("r", "poll_now", "Refresh", show=True),
-        Binding("y", "copy_current", "Copy", show=True),
-        Binding("o", "open_ticket", "Open", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        Binding("tab", "next_detail_file", "Next view", show=True, priority=True),
+        Binding("shift+tab", "previous_detail_file", "Prev view", show=True, priority=True),
+        Binding("escape", "interrupt", "Interrupt", show=True, priority=True),
+        Binding("pageup", "scroll_detail_up", "Scroll up", show=False, priority=True),
+        Binding("pagedown", "scroll_detail_down", "Scroll down", show=False, priority=True),
+        Binding("ctrl+c", "quit", "Quit", show=True, priority=True),
     ]
 
     _spinner_frame: reactive[int] = reactive(0)
@@ -459,13 +459,14 @@ class WatchApp(App[None]):
                 yield Static("", id="detail-tablabel", markup=False)
                 with DetailPane(id="detail"):
                     yield Static("", id="detail-content", markup=False)
+        yield Input(placeholder="ask about the selected ticket, or /investigate /scout /help…", id="command")
         yield Footer()
         yield Static(self._splash_text(), id="splash", markup=False)
 
     def on_mount(self) -> None:
         self._update_banner()
         self._refresh_detail()
-        self.query_one("#ticket-list", TicketList).focus()
+        self.query_one("#command", Input).focus()
         if self._poll_interval < 9999:
             self.set_interval(self._poll_interval, self.action_poll_now)
             self.action_poll_now()
@@ -1030,3 +1031,78 @@ class WatchApp(App[None]):
         webbrowser.open(
             f"https://{self._config.zendesk_subdomain}.zendesk.com/agent/tickets/{row.ticket_id}"
         )
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "command":
+            return
+        text = event.value
+        event.input.value = ""
+        parsed = parse_input(text)
+        if not parsed.is_command and not parsed.args:
+            return
+        self._dispatch_command(parsed)
+
+    def _dispatch_command(self, parsed) -> None:
+        if not parsed.is_command:
+            self._stub_chat(parsed.args)  # replaced by real chat in a later task
+            return
+        name = parsed.name
+        if name == "refresh":
+            self.action_poll_now()
+        elif name == "open":
+            self.action_open_ticket()
+        elif name == "copy":
+            self.action_copy_current()
+        elif name == "quit":
+            self.exit()  # App.exit() is the sync-safe quit (action_quit is a coroutine)
+        elif name == "help":
+            self._show_help()
+        elif name == "investigate":
+            self.action_investigate()
+        elif name == "doctor":
+            self._run_doctor()
+        elif name == "scout":
+            # PR #6 shipped the engine as the (now hidden/deprecated) CLI command;
+            # an in-TUI Scout panel is a future task.
+            self._set_notification("Scout runs from the CLI for now: `noc-cli scout`")
+        else:
+            self._set_notification(f"Unknown command /{name}; try /help")
+
+    def action_interrupt(self) -> None:
+        # A later task wires this to chat interrupt; for now clear the box.
+        try:
+            self.query_one("#command", Input).value = ""
+        except NoMatches:
+            pass
+
+    def action_scroll_detail_up(self) -> None:
+        self.query_one("#detail", DetailPane).scroll_page_up()
+
+    def action_scroll_detail_down(self) -> None:
+        self.query_one("#detail", DetailPane).scroll_page_down()
+
+    def _show_help(self) -> None:
+        lines = ["Commands:"]
+        for cmd, desc in KNOWN_COMMANDS.items():
+            lines.append(f"  /{cmd:<12} {desc}")
+        lines.append("")
+        lines.append("Anything without a leading / is a chat turn about the selected ticket.")
+        self._set_detail_text("\n".join(lines))
+
+    def _run_doctor(self) -> None:
+        from noc_cli.doctor import run_checks
+
+        results = run_checks(self._config)
+        lines = ["Doctor:"]
+        for r in results:
+            lines.append(self._format_doctor_row(r))
+        self._set_detail_text("\n".join(lines))
+
+    def _format_doctor_row(self, r) -> str:
+        # CheckResult(ok: bool, label: str, message: str) — mirror print_report's
+        # "{icon}  {label}: {message}" layout with a plain-text ✓/✗ icon.
+        icon = "✓" if r.ok else "✗"
+        return f"  {icon}  {r.label}: {r.message}"
+
+    def _stub_chat(self, text: str) -> None:
+        self._set_notification("Chat lands in a later task — use /investigate for now.")
