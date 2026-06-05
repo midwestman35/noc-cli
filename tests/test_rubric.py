@@ -21,3 +21,18 @@ def test_contains_row_rejects_unknown_and_empty():
     assert not r.contains_row("this string is not in the rubric anywhere")
     assert not r.contains_row("")
     assert not r.contains_row("   \n\t ")
+
+
+def test_core_stops_before_symptom_class_tables():
+    r = load_rubric()
+    assert "## Symptom Class" not in r.core
+    assert "Step 0" in r.core
+    assert "Engineering Jira" in r.core
+    assert len(r.core) < len(r.text)
+
+
+def test_contains_row_accepts_extra_texts():
+    r = load_rubric()
+    needle = "RTP present, timestamps healthy"
+    assert not r.contains_row(needle, extra_texts=[])
+    assert r.contains_row(needle, extra_texts=["... RTP present, timestamps healthy ..."])

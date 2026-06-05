@@ -1,0 +1,66 @@
+{
+  "rubric_version": "2026-05-13",
+  "intake": {
+    "ticket_id": 18443,
+    "url": "https://carbyne.zendesk.com/agent/tickets/18443",
+    "status": "open",
+    "tags": ["low_audio"],
+    "requester": "PSAP Ops",
+    "organization": "Riverside 911",
+    "site": "Riverside",
+    "one_line_fingerprint": "Riverside / vague audio complaint / no reproducible media defect",
+    "ticket_summary": [
+      "Caller reported a vague audio concern with no Call-ID or reproducible window."
+    ],
+    "context_pulls": [
+      {
+        "pull": "Prior Riverside audio tickets",
+        "result": "No matching recurring defect found",
+        "source": "Zendesk"
+      }
+    ],
+    "initial_hypothesis": "[low audio]",
+    "intake_decision": "ready_for_evidence_preflight"
+  },
+  "evidence_preflight": {
+    "gathered": [
+      {
+        "evidence_type": "RTP analysis",
+        "source": "analysis/rtp-summary.md",
+        "time_window": "14:00-14:15 UTC",
+        "summary": "RTP was present with healthy timestamps and no jitter or loss spike."
+      }
+    ],
+    "decisive_evidence": [
+      "RTP present, timestamps healthy, no progressive latency increase",
+      "No station renderer hang or heap spike found in the incident window"
+    ],
+    "missing_or_non_decisive": [
+      "No Call-ID was provided, so a specific media path cannot be isolated"
+    ]
+  },
+  "fork_packet": {
+    "fork_letter": "C",
+    "confidence": "Medium",
+    "symptom_tag": "[unclassified]",
+    "rubric_class": "Layer 1 fallback",
+    "quoted_rubric_row": "No matching decisive evidence yet",
+    "reasoning": "The analyst suspected low audio, so the low-audio runbook was consulted first. RTP and station evidence ruled out the media-specific fork rows, so the investigation pivoted to the base rubric and treated the ticket as an ill-defined customer report.",
+    "evidence_summary": [
+      "Low-audio runbook was consulted and ruled out by healthy RTP and station evidence"
+    ],
+    "missing_evidence": [],
+    "runbook_reference": {
+      "slug": "low-audio",
+      "section": "Consulted and ruled out; no low-audio fork row matched the evidence."
+    },
+    "historical_matches": [],
+    "related_zendesk": [],
+    "related_jira": []
+  },
+  "drafts": {
+    "customer_reply": "Hi team,\n\nWe reviewed the available RTP and station evidence and did not find a media-path defect in the supplied window. Please provide a Call-ID or exact timestamp if the symptom recurs.\n\nThank you,\nCarbyne NOC",
+    "internal_note": "Fork C. Initial low-audio hypothesis was ruled out by healthy RTP and station evidence.",
+    "jira_draft": null
+  }
+}

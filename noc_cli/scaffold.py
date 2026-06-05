@@ -19,6 +19,10 @@ class TicketFolder:
     def state_path(self) -> Path:
         return self.root / "STATE.md"
 
+    @property
+    def runbooks(self) -> Path:
+        return self.root / "runbooks"
+
 
 class SoftLockConflict(RuntimeError):
     """Raised when an existing STATE.md claims a different owner and --force
@@ -42,14 +46,19 @@ class SoftLockConflict(RuntimeError):
 
 
 def scaffold_ticket(tickets_root: Path, ticket_id: int | str) -> TicketFolder:
-    """Create Tickets/<id>/{logs,pcaps,analysis}/. Idempotent."""
+    """Create Tickets/<id>/{logs,pcaps,analysis,runbooks}/. Idempotent."""
     root = Path(tickets_root) / str(ticket_id)
     logs = root / "logs"
     pcaps = root / "pcaps"
     analysis = root / "analysis"
     for d in (logs, pcaps, analysis):
         d.mkdir(parents=True, exist_ok=True)
-    return TicketFolder(root=root, logs=logs, pcaps=pcaps, analysis=analysis)
+    folder = TicketFolder(root=root, logs=logs, pcaps=pcaps, analysis=analysis)
+
+    from noc_cli.runbooks import stage_runbooks
+
+    stage_runbooks(folder.runbooks)
+    return folder
 
 
 def _strip_yaml_scalar(value: str) -> str:

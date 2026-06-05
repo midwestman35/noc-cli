@@ -1,4 +1,11 @@
-from noc_cli.runbooks import RUNBOOK_SLUGS, _load_runbook, runbook_for_tag
+from noc_cli.models import APPROVED_SYMPTOM_TAGS
+from noc_cli.runbooks import (
+    DOMAIN_MAP,
+    RUNBOOK_SLUGS,
+    _load_runbook,
+    runbook_for_tag,
+    runbook_slug_from_path,
+)
 
 
 def test_each_approved_symptom_tag_maps_to_a_runbook():
@@ -38,3 +45,40 @@ def test_all_declared_slugs_resolve_to_packaged_files():
     for slug in RUNBOOK_SLUGS:
         text = _load_runbook(slug)
         assert text and len(text) > 100
+
+
+def test_domain_map_covers_all_runbook_slugs():
+    slugs = {s.slug for s in DOMAIN_MAP}
+    assert slugs == set(RUNBOOK_SLUGS)
+    assert len(DOMAIN_MAP) == 6
+
+
+def test_domain_map_tags_are_all_approved():
+    for s in DOMAIN_MAP:
+        assert s.tag in APPROVED_SYMPTOM_TAGS, f"{s.tag!r} not approved"
+        assert s.domain and s.label
+
+
+def test_runbook_slug_from_path_matches_staged_runbook_paths():
+    assert runbook_slug_from_path("/t/18432/runbooks/low-audio.md") == "low-audio"
+    assert runbook_slug_from_path("runbooks/apex.md") == "apex"
+
+
+def test_runbook_slug_from_path_rejects_non_runbooks():
+    assert runbook_slug_from_path("/t/18432/runbooks/fork-rubric.md") is None
+    assert runbook_slug_from_path("/t/18432/logs/station.log") is None
+    assert runbook_slug_from_path("/t/18432/analysis/notes.md") is None
+    assert runbook_slug_from_path("no-ani.md") is None
+    assert runbook_slug_from_path("") is None
+
+
+def test_stage_runbooks_copies_six_runbooks_and_rubric(tmp_path):
+    from noc_cli.runbooks import stage_runbooks
+
+    written = stage_runbooks(tmp_path / "runbooks")
+    assert "fork-rubric.md" in written
+    for slug in RUNBOOK_SLUGS:
+        assert f"{slug}.md" in written
+        staged = (tmp_path / "runbooks" / f"{slug}.md").read_text()
+        assert len(staged) > 100
+    assert (tmp_path / "runbooks" / "fork-rubric.md").read_text().startswith("---")
