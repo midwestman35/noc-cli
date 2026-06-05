@@ -177,6 +177,138 @@ Ordered by value-to-surface ratio — earliest phases reuse the most existing co
 
 ---
 
+## 9. Backlog Scout — discovery/acquisition stage (NEW · captured 2026-06-05)
+
+> **Status: PARKING LOT.** A *closer that acts and reports back*. Distinct from
+> Phases A–D: those **drive the agent on tickets already in your inbox**; Scout sits
+> **one stage earlier** and **sources tickets into the inbox**. Reviewed
+> adversarially against the installed SDK (`claude-agent-sdk 0.2.88`) — the
+> multi-agent framing was rejected in favour of the inversion below.
+
+**One-line intent.** From inside `watch`, surface the stale Tier-1 tickets actually
+worth your time — runbook-backed, with "here's what's missing" attached — and on a
+single keypress take + assign one and kick the existing `investigate` against it,
+so it lands in the inbox you're already watching while you catch up on context.
+
+### 9.1 Placement & trigger
+
+- A **panel inside the `watch` TUI** (a keybinding opens "Backlog Scout") — **not** a
+  new top-level command. Keeps the surface from fragmenting and reinforces that Scout
+  *feeds* the inbox rather than duplicating it.
+- **Engineer-triggered** this iteration (no auto-run on poll).
+- Proposal is **strictly in-panel** — no desktop/OpenPets ping in v1.
+
+### 9.2 Pipeline (three stages, two of them cheap)
+
+1. **Stage 1 — staleness filter (no agent, pure arithmetic).** Pull Tier-1 (NOC)
+   Queue **`6490757606044`** via the existing `view_tickets` path (same as `watch`).
+   Rank by `staleness × priority` from metadata already returned (`updated_at`,
+   status, priority, unassigned). ~80 backlog tickets → top-K (5–10). Zero tokens.
+2. **Stage 2 — triability pre-screen (Haiku, bounded fan-out).** For the top-K only,
+   one **fresh** `query()` per ticket under `asyncio.Semaphore(2–3)`. Each emits a
+   structured **runbook-match confidence + gap list** ("runbook X fits; missing
+   evidence is Y to form a hypothesis"). Deliberately **not** a full investigate —
+   this is the line that keeps Scout from duplicating Phase A.
+3. **Synthesis — ranked report (Opus 4.8, high effort).** A single call folds the K
+   gap-reports into the ranked "what's worth your time and why" list rendered in the
+   panel. This is the deliverable that reaches the engineer.
+4. **Propose-then-confirm.** Nothing is written until you press a key on a candidate.
+   On confirm, the **harness** (not the agent) performs the lone Zendesk write —
+   assign to you — then launches the existing `investigate` workflow. Ticket now
+   appears in the watched inbox.
+
+### 9.3 Architecture decision — the inversion (orchestrator = Python, not an LLM)
+
+The proposed "Sonnet orchestrator + Haiku subagents" is *buildable* — per-role
+`model`/`effort` is first-class on both `ClaudeAgentOptions` and `AgentDefinition`,
+and read-only hooks propagate to subagents (`SubagentStart/Stop`, parallel-subagent
+attribution). It was **rejected** for this job because Stage 2 is an
+embarrassingly-parallel **map** with no inter-task coordination:
+
+- **Non-deterministic delegation** — the orchestrator *model* decides whether/how
+  many subagents to spawn (Agent tool). A `for t in top_k: await query(...)` is
+  deterministic and unit-testable; an LLM dispatcher is neither.
+- **Context rot relocated, not solved** — subagents isolate per-ticket reading, but
+  the orchestrator still aggregates every summary. A **fresh process per ticket**
+  (plain `query()`) kills rot by construction.
+- **Orchestrator = pure cost overhead** — Sonnet tokens coordinating a task needing
+  no coordination; cold-start (~20–30 s/process) bites regardless, so the semaphore
+  is mandatory either way.
+
+**Banked design:** deterministic Python orchestrator → bounded Haiku fan-out →
+single Opus-high synthesis. SDK subagents are noted as the **right** primitive for
+Phase C chat (agent decides mid-session to dispatch "go re-read runbook X"), not here.
+
+### 9.4 Hardcoded per-role profiles (frozen options-factories)
+
+Confirmed in `types.py`: `model: str | None` (full ID or `sonnet`/`opus`/`haiku`/
+`inherit`) and `effort: EffortLevel` (`"low"|"medium"|"high"|"xhigh"|"max"`) exist on
+`ClaudeAgentOptions`. Each profile is one factory — trivially testable; the existing
+`investigate` runner stays untouched.
+
+| Profile | Role | Model | Effort | Sees |
+|---|---|---|---|---|
+| *(none)* | Stage 1 staleness filter | — Python arithmetic | — | Zendesk metadata |
+| `SCREEN` | Stage 2 per-ticket pre-screen | `claude-haiku-4-5` | low/med | one ticket + runbooks, fresh window |
+| `SYNTHESIS` | Final ranked report (the deliverable) | `claude-opus-4-8` | **high** | the K gap-reports on disk |
+
+`effort="high"` lives **only** on synthesis: it runs **once per cycle** over K small
+gap-reports (not per ticket), so the expensive reasoning is concentrated where the
+delivered judgment is and cost stays bounded.
+
+### 9.5 Safety
+
+Agent stays **100 % read-only** — the Zendesk-write denylist in
+`agent/harness.py::build_hooks` is **never relaxed**. The single mutating action
+(assign) is deterministic CLI code behind the engineer's keypress: auditable,
+testable, reversible. All existing sandbox/denylist rails (§6) carry over unchanged.
+
+### 9.6 Out of scope — banked for future sessions
+
+**A. Deferred Scout capabilities (same feature, later):**
+- **Graduated autonomy** — v1 propose-then-confirm → veto-window ("taking #123 in
+  30 s unless stopped") → act-then-report, *only* after the confidence metric is
+  calibrated on real outcomes.
+- **Auto-eval on poll** — run each `watch` cycle under a per-cycle cost ceiling
+  (ties to §8). Engineer-triggered for now.
+- **Desktop/OpenPets ping** for "candidates ready" — kept in-panel in v1.
+- **Configurable discovery pool** — multiple views, `search` queries, per-pool
+  weights. Hardwired to `6490757606044` now.
+- **Bulk acquisition** — batch-confirm multiple candidates (one-at-a-time now).
+- **Persisted Scout artifact** — write each cycle's ranked report to disk
+  (`SCOUT.md`, mirroring the 5-md investigate folder) for audit/history.
+- **Metric feedback loop** — tune `staleness × priority` weights and the
+  runbook-confidence threshold from whether confirmed tickets *actually resolved*.
+
+**B. Reusable primitives this spun out (candidates for their own entries):**
+- **Per-role model/effort profiles** as a first-class noc-cli concept — generalizes
+  beyond Scout; `investigate` could adopt a profile instead of the CLI default.
+- **The triability pre-screen** (cheap Haiku gap-check) as a standalone primitive —
+  a fast pre-flight before *any* full `investigate`, not just inside Scout.
+
+**C. Hard anti-scope (rejected to prevent creep):**
+- **No LLM orchestrator / SDK subagents** for the fan-out — fixed-size map; subagents
+  belong to Phase C chat's mid-session delegation, not here. (Capability confirmed,
+  deliberately unused.)
+- **No agent-side writes** — the agent never gains Zendesk-write tools.
+- **Not a second `investigate`** — Stage 2 stops at "resolvable? what's missing?".
+  Re-investigation of tickets with prior fork packets is Phase B's `/revise`, not
+  Scout's.
+
+### 9.7 Open questions for the dedicated session
+
+- **Staleness metric** — exact `staleness × priority` weighting, and the threshold
+  for "stale enough" / "resolvable enough" to reach the top-K.
+- **`SCREEN` confidence schema** — what fields the Haiku pre-screen must emit
+  (runbook id, confidence, gap list) and how synthesis consumes them.
+- **Top-K size & semaphore value** — and how the panel surfaces an in-flight queue.
+- **Confirm UX** — what an assigned-then-investigating ticket shows in the inbox
+  while the engineer catches up; how a failed assign is surfaced/rolled back.
+- **Re-investigation boundary** — when a candidate already has a fork packet, hand
+  off to Phase B rather than re-running Stage-2 from scratch?
+
+---
+
 ## Appendix — sources
 
 - Agent SDK reference (Python): https://code.claude.com/docs/en/agent-sdk/python
