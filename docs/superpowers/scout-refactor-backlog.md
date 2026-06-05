@@ -30,10 +30,10 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 
 | # | Item | Source | Status | Notes |
 |---|------|--------|--------|-------|
-| 7 | **Typed injectable boundaries** — `Protocol` for Scout Zendesk reader (`view_tickets`, `get_ticket`); type `query_fn`, `cwd` as `Path` | Important I5; Refactor #6 | open | Enables static checking; documents contracts |
-| 8 | **Surface dropped screen count** — when `len(reports) < len(candidates)`, add metadata to `ScoutReport` or stderr warning | Important I7; Refactor #8 | open | Operators trust the report when LLM JSON parse fails silently |
+| 7 | **Typed injectable boundaries** — `Protocol` for Scout Zendesk reader (`view_tickets`, `get_ticket`); type `query_fn`, `cwd` as `Path` | Important I5; Refactor #6 | **done** | `noc_cli/scout/ports.py` (`TicketReader`, `QueryFn`); `run_scout`/`screen`/`synthesize`/`build_options` annotated |
+| 8 | **Surface dropped screen count** — when `len(reports) < len(candidates)`, add metadata to `ScoutReport` or stderr warning | Important I7; Refactor #8 | **done** | `ScoutReport.candidates_screened`/`reports_parsed`/`.dropped`; yellow stderr note in `run_scout_list` |
 | 9 | **CLI tests against public Scout API** — reduce patching of private `noc_cli.cli._*` helpers | Minor (test_cli_scout) | **done** | `test_cli_scout.py` patches `noc_cli.scout.commands.*`; eligibility tested mock-free in `test_scout_rank.py` |
-| 10 | **Rename `acquire.py` → `writer.py`** (or `zendesk_write.py`) | Minor; Refactor #9 | open | File only holds `ZendeskWriter`; name suggests fetch |
+| 10 | **Rename `acquire.py` → `writer.py`** (or `zendesk_write.py`) | Minor; Refactor #9 | **done** | `noc_cli/scout/writer.py` + `test_scout_writer.py`; 3 importers rewired |
 
 ---
 
@@ -54,7 +54,7 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 1. ~~P0 (#1–2)~~ — complete.
 2. ~~**P1 batch A:** #4 (hooks factory) + #6 (llm_io)~~ — complete.
 3. ~~**P1 batch B:** #3 + #5 (+ #9)~~ — complete. Eligibility landed in `rank.py`; no separate `take.py` was needed.
-4. **P2:** #7–#10 as needed before wider operator rollout or mypy enforcement.
+4. ~~**P2:** #7–#10~~ — complete. (mypy not yet in the repo; `ports.py` annotations are ready for it when added.)
 5. **P3:** #11 when adding the next major CLI command; rest are opportunistic.
 
 ---
