@@ -32,6 +32,30 @@ def is_active_status(status: str) -> bool:
     return not status or status.lower() in _ACTIVE_STATUSES
 
 
+def take_ineligible_reason(
+    ticket: Ticket, *, now: datetime, min_staleness_days: int
+) -> str | None:
+    """Why *ticket* is ineligible to surface/take, or None if eligible.
+
+    The single source of truth for the Scout ruleset — shared by
+    ``rank_candidates`` (list filter) and the ``--take`` preflight, so the list
+    and the claim path can never disagree about what counts as a candidate.
+    """
+    if ticket.assignee_id is not None:
+        return f"Ticket #{ticket.id} is already assigned."
+    if not is_active_status(ticket.status):
+        return f"Ticket #{ticket.id} is {ticket.status or 'inactive'}."
+    stale_days = staleness_days(ticket, now=now)
+    if stale_days is None:
+        return f"Ticket #{ticket.id} has no updated_at timestamp."
+    if stale_days < min_staleness_days:
+        return (
+            f"Ticket #{ticket.id} is no longer stale enough "
+            f"({stale_days}d < {min_staleness_days}d)."
+        )
+    return None
+
+
 def rank_candidates(
     tickets: list[Ticket],
     *,
@@ -45,13 +69,11 @@ def rank_candidates(
     """
     candidates: list[Candidate] = []
     for ticket in tickets:
-        if ticket.assignee_id is not None:
+        if take_ineligible_reason(
+            ticket, now=now, min_staleness_days=min_staleness_days
+        ):
             continue
-        if not is_active_status(ticket.status):
-            continue
-        stale_days = staleness_days(ticket, now=now)
-        if stale_days is None or stale_days < min_staleness_days:
-            continue
+        stale_days = staleness_days(ticket, now=now)  # not None past the guard
         weight = _PRIORITY_WEIGHT.get((ticket.priority or "").lower(), 1.0)
         candidates.append(
             Candidate(

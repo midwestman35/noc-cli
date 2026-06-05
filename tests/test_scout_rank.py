@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from noc_cli.models import Ticket
-from noc_cli.scout.rank import rank_candidates
+from noc_cli.scout.rank import rank_candidates, take_ineligible_reason
 
 NOW = datetime(2026, 6, 5, tzinfo=timezone.utc)
 
@@ -53,3 +53,41 @@ def test_top_k_truncates():
 
     assert len(ranked) == 3
     assert [c.ticket_id for c in ranked] == [10, 9, 8]
+
+
+def test_take_ineligible_reason_eligible_returns_none():
+    ticket = _ticket(42, days_stale=10)
+
+    assert take_ineligible_reason(ticket, now=NOW, min_staleness_days=7) is None
+
+
+def test_take_ineligible_reason_flags_assigned():
+    ticket = _ticket(42, days_stale=10, assignee=99)
+
+    reason = take_ineligible_reason(ticket, now=NOW, min_staleness_days=7)
+
+    assert reason is not None and "already assigned" in reason
+
+
+def test_take_ineligible_reason_flags_inactive_status():
+    ticket = _ticket(42, days_stale=10, status="solved")
+
+    reason = take_ineligible_reason(ticket, now=NOW, min_staleness_days=7)
+
+    assert reason is not None and "solved" in reason
+
+
+def test_take_ineligible_reason_flags_missing_updated_at():
+    ticket = Ticket(id=42, subject="x", status="open")
+
+    reason = take_ineligible_reason(ticket, now=NOW, min_staleness_days=7)
+
+    assert reason is not None and "updated_at" in reason
+
+
+def test_take_ineligible_reason_flags_not_stale_enough():
+    ticket = _ticket(42, days_stale=2)
+
+    reason = take_ineligible_reason(ticket, now=NOW, min_staleness_days=7)
+
+    assert reason is not None and "no longer stale" in reason

@@ -235,134 +235,6 @@ def _handoff_with_initial_hypothesis(
     )
 
 
-def _now_utc():
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc)
-
-
-def _make_zendesk_client(cfg):
-    from noc_cli.zendesk import ZendeskClient
-
-    return ZendeskClient(cfg)
-
-
-def _run_scout_report(cfg, *, top_k: int, min_staleness_days: int):
-    """Build a read-only client and run the Scout pipeline."""
-    import tempfile
-
-    from claude_agent_sdk import query  # noqa: PLC0415
-
-    from noc_cli.scout.runner import run_scout
-
-    client = _make_zendesk_client(cfg)
-
-    async def _go():
-        with tempfile.TemporaryDirectory(prefix="noc-scout-") as tmp:
-            return await run_scout(
-                client=client,
-                view_id=cfg.scout_view,
-                workspace=Path(tmp),
-                now=_now_utc(),
-                query_fn=query,
-                top_k=top_k,
-                min_staleness_days=min_staleness_days,
-            )
-
-    return asyncio.run(_go())
-
-
-def _make_writer(cfg):
-    from noc_cli.scout.acquire import ZendeskWriter
-
-    return ZendeskWriter(cfg)
-
-
-def _resolve_owner_id(cfg) -> int | None:
-    return _make_zendesk_client(cfg).find_user_id(cfg.watch_assignee or cfg.owner)
-
-
-def _invoke_investigate(ticket_id: int) -> None:
-    asyncio.run(
-        _run_investigate(
-            ticket_id=ticket_id,
-            extra_files=[],
-            pastes=[],
-            force=False,
-            fixture=None,
-            no_agent=False,
-            initial_hypothesis="",
-            verbose=False,
-        )
-    )
-
-
-def _take_preflight(ticket, *, now, min_staleness_days: int) -> str | None:
-    from noc_cli.scout.rank import is_active_status, staleness_days
-
-    if ticket.assignee_id is not None:
-        return f"Ticket #{ticket.id} is already assigned."
-    if not is_active_status(ticket.status):
-        return f"Ticket #{ticket.id} is {ticket.status or 'inactive'}."
-
-    stale_days = staleness_days(ticket, now=now)
-    if stale_days is None:
-        return f"Ticket #{ticket.id} has no updated_at timestamp."
-    if stale_days < min_staleness_days:
-        return (
-            f"Ticket #{ticket.id} is no longer stale enough "
-            f"({stale_days}d < {min_staleness_days}d)."
-        )
-    return None
-
-
-def _preflight_current_ticket(cfg, *, ticket_id: int, min_staleness_days: int) -> str | None:
-    ticket = _make_zendesk_client(cfg).get_ticket(ticket_id)
-    return _take_preflight(
-        ticket, now=_now_utc(), min_staleness_days=min_staleness_days
-    )
-
-
-def _abort_take(reason: str) -> None:
-    typer.secho(reason, fg=typer.colors.RED, err=True)
-    raise typer.Exit(code=2)
-
-
-def _take_ticket(cfg, *, ticket_id: int, min_staleness_days: int, yes: bool) -> None:
-    reason = _preflight_current_ticket(
-        cfg, ticket_id=ticket_id, min_staleness_days=min_staleness_days
-    )
-    if reason is not None:
-        _abort_take(reason)
-
-    owner_id = _resolve_owner_id(cfg)
-    if owner_id is None:
-        typer.secho(
-            f"Could not resolve a Zendesk user id for "
-            f"{cfg.watch_assignee or cfg.owner!r}. Set NOC_WATCH_ASSIGNEE / "
-            "NOC_OWNER to your Zendesk email.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    if not yes:
-        typer.confirm(
-            f"Assign ticket #{ticket_id} to yourself and start investigating?",
-            abort=True,
-        )
-
-    reason = _preflight_current_ticket(
-        cfg, ticket_id=ticket_id, min_staleness_days=min_staleness_days
-    )
-    if reason is not None:
-        _abort_take(reason)
-
-    _make_writer(cfg).assign_ticket(ticket_id, owner_id)
-    typer.secho(f"Assigned #{ticket_id} to you. Investigating...", fg=typer.colors.GREEN)
-    _invoke_investigate(ticket_id)
-
-
 async def _run_investigate(
     ticket_id: int,
     extra_files: list[Path],
@@ -605,8 +477,8 @@ def scout(
     """Scan Tier-1 backlog candidates needing review; optionally claim one."""
     import httpx
 
+    from noc_cli.scout import commands
     from noc_cli.scout.acquire import ZendeskWriteError
-    from noc_cli.scout.render import render_scout_report
     from noc_cli.zendesk import ZendeskError
 
     branding.render_banner()
@@ -614,15 +486,13 @@ def scout(
 
     try:
         if take is None:
-            report = _run_scout_report(
+            commands.run_scout_list(
                 cfg, top_k=top_k, min_staleness_days=min_staleness_days
             )
-            typer.echo(render_scout_report(report))
-            return
-
-        _take_ticket(
-            cfg, ticket_id=take, min_staleness_days=min_staleness_days, yes=yes
-        )
+        else:
+            commands.take_ticket(
+                cfg, ticket_id=take, min_staleness_days=min_staleness_days, yes=yes
+            )
     except typer.Exit:
         raise
     except ZendeskError as exc:
