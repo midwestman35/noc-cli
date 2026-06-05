@@ -282,6 +282,8 @@ async def test_tablabel_describes_current_file_tab(db_conn, tmp_path):
         assert "Summary" in _text(app.query_one("#detail-tablabel"))
         await pilot.press("tab")
         await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
         label = _text(app.query_one("#detail-tablabel"))
 
     assert "INTAKE.md" in label
@@ -323,6 +325,8 @@ async def test_tab_cycles_to_file(db_conn, tmp_path):
         await _poll(app, pilot)
         await pilot.press("tab")
         await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
         assert "# Intake for 707" in app.current_detail_text
 
 
@@ -334,8 +338,12 @@ async def test_shift_tab_cycles_back_from_file_to_summary(db_conn, tmp_path):
         await _poll(app, pilot)
         await pilot.press("tab")
         await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
         assert "# Intake for 717" in app.current_detail_text
 
+        await pilot.press("shift+tab")
+        await pilot.pause()
         await pilot.press("shift+tab")
         await pilot.pause()
 
@@ -538,3 +546,16 @@ async def test_splash_shows_then_dissolves_on_first_poll(db_conn, tmp_path):
         assert f"v{__version__}" in _text(splash.first())
         await _poll(app, pilot)
         assert len(app.query("#splash")) == 0
+
+
+async def test_tab_reaches_chat_view(db_conn, tmp_path):
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(700, subject="No ALI")]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        await pilot.press("tab")  # Summary -> Chat (works on a NON-triaged row)
+        await pilot.pause()
+        label = _text(app.query_one("#detail-tablabel"))
+        detail = app.current_detail_text
+    assert "Chat" in label
+    assert "about this ticket" in label.lower()
+    assert "700" in detail

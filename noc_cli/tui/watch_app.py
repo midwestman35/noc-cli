@@ -44,6 +44,7 @@ _BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
 
 _DETAIL_MODES = [
     "Summary",
+    "Chat",
     "INTAKE.md",
     "EVIDENCE_PREFLIGHT.md",
     "FORK_PACKET.md",
@@ -54,6 +55,7 @@ _DETAIL_MODES = [
 # Per-file taglines shown under the permanent header so each tab names not just
 # the file but what question it answers.
 _TAB_TAGLINES = {
+    "Chat": "about this ticket",
     "INTAKE.md": "What are we looking at?",
     "EVIDENCE_PREFLIGHT.md": "Do we have proof?",
     "FORK_PACKET.md": "The decision",
@@ -668,7 +670,12 @@ class WatchApp(App[None]):
             self._update_tablabel()
             return
 
-        # File tabs (1–5): raw file text, untouched. Only reachable on triaged
+        if _DETAIL_MODES[self._detail_index] == "Chat":
+            self._set_detail_text(self._render_chat_panel())
+            self._update_tablabel()
+            return
+
+        # File tabs (2–6): raw file text, untouched. Only reachable on triaged
         # rows (the tab actions guard on row.summary), but fall back defensively.
         if row.summary is not None:
             self._set_detail_text(
@@ -968,16 +975,22 @@ class WatchApp(App[None]):
             lines.append(f"  {raw}")
         return "\n".join(lines)
 
+    def _render_chat_panel(self) -> str:
+        row = self.selected_row
+        if row is None:
+            return "No ticket selected."
+        return f"Chat · ZD-{row.ticket_id}\n\nType a message in the box to start."
+
     def action_next_detail_file(self) -> None:
         row = self.selected_row
-        if row is None or row.summary is None:
+        if row is None:
             return
         self._detail_index = (self._detail_index + 1) % len(_DETAIL_MODES)
         self._refresh_detail()
 
     def action_previous_detail_file(self) -> None:
         row = self.selected_row
-        if row is None or row.summary is None:
+        if row is None:
             return
         self._detail_index = (self._detail_index - 1) % len(_DETAIL_MODES)
         self._refresh_detail()
