@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from noc_cli.config import Config
-from noc_cli.scout.acquire import ZendeskWriteError, ZendeskWriter
+from noc_cli.scout.writer import ZendeskWriteError, ZendeskWriter
 
 CFG = Config(
     zendesk_subdomain="acme",

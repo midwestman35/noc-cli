@@ -25,7 +25,7 @@ def make_zendesk_client(cfg):
 
 
 def make_writer(cfg):
-    from noc_cli.scout.acquire import ZendeskWriter  # noqa: PLC0415
+    from noc_cli.scout.writer import ZendeskWriter  # noqa: PLC0415
 
     return ZendeskWriter(cfg)
 

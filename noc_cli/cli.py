@@ -478,7 +478,7 @@ def scout(
     import httpx
 
     from noc_cli.scout import commands
-    from noc_cli.scout.acquire import ZendeskWriteError
+    from noc_cli.scout.writer import ZendeskWriteError
     from noc_cli.zendesk import ZendeskError
 
     branding.render_banner()

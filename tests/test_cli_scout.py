@@ -7,7 +7,7 @@ import httpx
 
 from noc_cli.cli import app
 from noc_cli.models import Ticket
-from noc_cli.scout.acquire import ZendeskWriteError
+from noc_cli.scout.writer import ZendeskWriteError
 from noc_cli.scout.models import RankedCandidate, ScoutReport
 from noc_cli.zendesk import ZendeskError
 
