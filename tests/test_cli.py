@@ -38,11 +38,23 @@ def test_render_banner_includes_name_and_tagline():
     assert "Carbyne APEX" in out
 
 
-def test_help_lists_config_in_full_command_surface():
+def test_help_hides_deprecated_aliases_keeps_setup_doctor_config():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("setup", "doctor", "investigate", "scout", "watch", "config"):
+    for command in ("setup", "doctor", "config"):
         assert command in result.stdout
+    # investigate/watch/scout are hidden compatibility aliases now.
+    for command in ("investigate", "watch", "scout"):
+        assert command not in result.stdout
+
+
+def test_watch_alias_warns_then_delegates(monkeypatch, tmp_path):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    monkeypatch.setattr("noc_cli.cli._launch_tui", lambda **kw: None)
+    result = runner.invoke(app, ["watch"])
+    assert result.exit_code == 0, result.output
+    assert "deprecated" in result.output.lower()
+    assert "noc-cli" in result.output.lower()
 
 
 def test_config_set_writes_env_file(tmp_path, monkeypatch):

@@ -16,7 +16,6 @@ from noc_cli.setup import run_setup
 app = typer.Typer(
     name="noc-cli",
     help="Read-only NOC triage assistant for Carbyne APEX NG911/E911.",
-    invoke_without_command=True,
 )
 config_app = typer.Typer(
     help="Read and edit noc-cli configuration.",
@@ -52,6 +51,15 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _warn_deprecated(old: str, new: str) -> None:
+    typer.secho(
+        f"`noc-cli {old}` is deprecated and will be removed in a future release. "
+        f"Use {new} instead.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -70,7 +78,7 @@ def main(
 
 @app.command()
 def setup() -> None:
-    """Interactive first-run onboarding (Zendesk creds, paths, watch, notifications)."""
+    """Interactive first-run onboarding (Zendesk creds, paths, TUI, notifications)."""
     branding.render_banner()
     typer.echo("")
 
@@ -165,7 +173,7 @@ def doctor(
     raise typer.Exit(code=exit_code)
 
 
-@app.command()
+@app.command(hidden=True, deprecated=True)
 def investigate(
     ticket_id: int = typer.Argument(..., help="Zendesk ticket ID"),
     file: list[Path] = typer.Option(
@@ -191,6 +199,7 @@ def investigate(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ) -> None:
     """Run the L3 agent investigation on a Zendesk ticket and produce a triage handoff."""
+    _warn_deprecated("investigate", "`/investigate` inside the TUI")
     import sys
 
     from noc_cli.seed import resolve_seed
@@ -459,7 +468,7 @@ async def _run_investigate(
     console.print(f"\n[bold green]Report:[/bold green] {folder.root}")
 
 
-@app.command()
+@app.command(hidden=True, deprecated=True)
 def scout(
     take: Optional[int] = typer.Option(
         None,
@@ -478,6 +487,7 @@ def scout(
     ),
 ) -> None:
     """Scan Tier-1 backlog candidates needing review; optionally claim one."""
+    _warn_deprecated("scout", "`/scout` inside the TUI")
     import httpx
 
     from noc_cli.scout import commands
@@ -513,6 +523,7 @@ def scout(
 
 
 def _launch_tui(view: str = "", assignee: str = "", interval: int = 60) -> None:
+    """Bootstrap and run the WatchApp TUI, with optional view/assignee/interval overrides."""
     from noc_cli import store
     from noc_cli.config import db_path
     from noc_cli.tui.watch_app import WatchApp
@@ -552,69 +563,15 @@ def _launch_tui(view: str = "", assignee: str = "", interval: int = 60) -> None:
         conn.close()
 
 
-@app.command()
+@app.command(hidden=True, deprecated=True)
 def watch(
-    view: str = typer.Option(
-        "",
-        "--view",
-        help="Zendesk view ID to poll (overrides NOC_WATCH_VIEW config).",
-    ),
-    assignee: str = typer.Option(
-        "",
-        "--assignee",
-        help="Assignee email to filter (overrides NOC_WATCH_ASSIGNEE config).",
-    ),
-    interval: int = typer.Option(
-        60,
-        "--interval",
-        min=1,
-        help="Poll interval in seconds (default 60).",
-    ),
+    view: str = typer.Option("", "--view"),
+    assignee: str = typer.Option("", "--assignee"),
+    interval: int = typer.Option(60, "--interval", min=1),
 ) -> None:
-    """Watch a Zendesk view and notify on ticket status changes / new requester comments."""
-    from noc_cli import store
-    from noc_cli.config import db_path
-    from noc_cli.tui.watch_app import WatchApp
-    from noc_cli.watch.notify import build_notifier
-    from noc_cli.watch.state import WatchState
-    from noc_cli.zendesk import ZendeskClient, ZendeskError
-
-    cfg = load_config()
-
-    # CLI flags override config values.
-    if view:
-        cfg = cfg.model_copy(update={"watch_view": view})
-    if assignee:
-        cfg = cfg.model_copy(update={"watch_assignee": assignee})
-
-    if not cfg.watch_view:
-        typer.secho(
-            "Error: no view configured. Pass --view <id> or run `noc-cli setup`.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-
-    try:
-        client = ZendeskClient(cfg)
-    except ZendeskError as exc:
-        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-
-    conn = store.connect(db_path())
-    try:
-        ws = WatchState(conn)
-        notifier = build_notifier(cfg.notify)
-        watch_app = WatchApp(
-            config=cfg,
-            client=client,
-            watch_state=ws,
-            notifier=notifier,
-            poll_interval=interval,
-        )
-        watch_app.run()
-    finally:
-        conn.close()
+    """Deprecated alias — bare `noc-cli` now opens the inbox."""
+    _warn_deprecated("watch", "bare `noc-cli`")
+    _launch_tui(view=view, assignee=assignee, interval=interval)
 
 
 if __name__ == "__main__":
