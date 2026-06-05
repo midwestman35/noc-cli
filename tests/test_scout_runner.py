@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-
 from noc_cli.models import Ticket
 from noc_cli.scout.runner import run_scout
 
@@ -87,3 +86,53 @@ def test_run_scout_empty_candidates_skips_agent(tmp_path):
     )
 
     assert report.ranked == []
+
+
+def test_run_scout_default_factories_build_restricted_hooks(tmp_path, monkeypatch):
+    """Production path: runner wires sandbox-confined hooks when factories are omitted."""
+    tickets = [
+        Ticket(
+            id=1,
+            subject="audio",
+            status="open",
+            priority="high",
+            updated_at=NOW - timedelta(days=8),
+        ),
+    ]
+    hook_builds: list[dict] = []
+    real_build_hooks = None
+
+    def recording_build_hooks(sandbox_root, events_path, *, restrict_read_tools=False):
+        hook_builds.append(
+            {
+                "sandbox_root": sandbox_root,
+                "events_path": events_path,
+                "restrict_read_tools": restrict_read_tools,
+            }
+        )
+        return real_build_hooks(
+            sandbox_root,
+            events_path,
+            restrict_read_tools=restrict_read_tools,
+        )
+
+    import noc_cli.agent.harness as harness
+
+    real_build_hooks = harness.build_hooks
+    monkeypatch.setattr(harness, "build_hooks", recording_build_hooks)
+
+    report = _run(
+        run_scout(
+            client=_FakeClient(tickets),
+            view_id="6490757606044",
+            workspace=tmp_path,
+            now=NOW,
+            query_fn=_fake_query,
+        )
+    )
+
+    assert [r.ticket_id for r in report.ranked] == [1]
+    assert len(hook_builds) == 1
+    assert hook_builds[0]["sandbox_root"] == tmp_path
+    assert hook_builds[0]["events_path"] == tmp_path / "events.jsonl"
+    assert hook_builds[0]["restrict_read_tools"] is True

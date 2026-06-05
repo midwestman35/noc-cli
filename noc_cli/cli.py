@@ -603,21 +603,40 @@ def scout(
     ),
 ) -> None:
     """Scan Tier-1 backlog candidates needing review; optionally claim one."""
+    import httpx
+
+    from noc_cli.scout.acquire import ZendeskWriteError
     from noc_cli.scout.render import render_scout_report
+    from noc_cli.zendesk import ZendeskError
 
     branding.render_banner()
     cfg = load_config()
 
-    if take is None:
-        report = _run_scout_report(
-            cfg, top_k=top_k, min_staleness_days=min_staleness_days
-        )
-        typer.echo(render_scout_report(report))
-        return
+    try:
+        if take is None:
+            report = _run_scout_report(
+                cfg, top_k=top_k, min_staleness_days=min_staleness_days
+            )
+            typer.echo(render_scout_report(report))
+            return
 
-    _take_ticket(
-        cfg, ticket_id=take, min_staleness_days=min_staleness_days, yes=yes
-    )
+        _take_ticket(
+            cfg, ticket_id=take, min_staleness_days=min_staleness_days, yes=yes
+        )
+    except typer.Exit:
+        raise
+    except ZendeskError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except ZendeskWriteError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except httpx.HTTPError as exc:
+        typer.secho(f"Zendesk request failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.secho(f"Scout failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command()

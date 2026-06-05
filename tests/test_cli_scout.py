@@ -3,9 +3,13 @@ from unittest import mock
 
 from typer.testing import CliRunner
 
+import httpx
+
 from noc_cli.cli import app
 from noc_cli.models import Ticket
+from noc_cli.scout.acquire import ZendeskWriteError
 from noc_cli.scout.models import RankedCandidate, ScoutReport
+from noc_cli.zendesk import ZendeskError
 
 runner = CliRunner()
 NOW = datetime(2026, 6, 5, tzinfo=timezone.utc)
@@ -206,3 +210,60 @@ def test_scout_take_rechecks_after_confirmation_before_assigning():
     assert "already assigned" in result.output
     writer.assign_ticket.assert_not_called()
     inv.assert_not_called()
+
+
+def test_scout_list_surfaces_zendesk_error():
+    with mock.patch(
+        "noc_cli.cli._run_scout_report",
+        side_effect=ZendeskError("auth failed"),
+    ):
+        result = runner.invoke(app, ["scout"])
+
+    assert result.exit_code == 1
+    assert "Zendesk error: auth failed" in result.output
+
+
+def test_scout_list_surfaces_agent_failure():
+    with mock.patch(
+        "noc_cli.cli._run_scout_report",
+        side_effect=RuntimeError("agent unavailable"),
+    ):
+        result = runner.invoke(app, ["scout"])
+
+    assert result.exit_code == 1
+    assert "Scout failed: agent unavailable" in result.output
+
+
+def test_scout_take_surfaces_zendesk_error():
+    with mock.patch(
+        "noc_cli.cli._make_zendesk_client",
+        side_effect=ZendeskError("not configured"),
+    ):
+        result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Zendesk error: not configured" in result.output
+
+
+def test_scout_take_surfaces_write_error():
+    writer = mock.MagicMock()
+    writer.assign_ticket.side_effect = ZendeskWriteError("auth failed on assign")
+    with mock.patch("noc_cli.cli._make_writer", return_value=writer), \
+        mock.patch("noc_cli.cli._resolve_owner_id", return_value=7), \
+        mock.patch("noc_cli.cli._make_zendesk_client", return_value=_FakeClient(_stale_ticket())), \
+        mock.patch("noc_cli.cli._now_utc", return_value=NOW):
+        result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Zendesk error: auth failed on assign" in result.output
+
+
+def test_scout_take_surfaces_http_error():
+    with mock.patch(
+        "noc_cli.cli._make_zendesk_client",
+        side_effect=httpx.ConnectError("network down"),
+    ):
+        result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Zendesk request failed" in result.output
