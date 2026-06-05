@@ -26,7 +26,8 @@ The guiding constraint, in the user's words: *"It should closely resemble what w
 already have. In essence, we are just moving everything into the TUI."* The two
 panes, the queue, the detail tabs, the poll loop, the read-only safety model — all
 unchanged. We add a splash, a text box, a command router, and the chat subsystem,
-and we retire the standalone `investigate`/`watch` CLI commands.
+and we move `investigate`/`watch`/`scout` into the shell while keeping hidden
+compatibility aliases for one release.
 
 ## 2. Goals & non-goals
 
@@ -41,8 +42,10 @@ and we retire the standalone `investigate`/`watch` CLI commands.
 - Full `/command` set covering every action that used to be a single key.
 - **Chat subsystem** (the §C surface): stateful per-ticket session, persisted
   transcript, per-turn PII redaction, interruptible.
-- Remove `investigate`/`watch`/`scout` from the CLI surface; keep `setup`,
-  `doctor`, `config` as CLI escape hatches.
+- Make the TUI the primary surface and hide/deprecate `investigate`/`watch`/`scout`
+  from normal help; keep compatibility aliases for one release so scripts and
+  runbooks do not break without warning. Keep `setup`, `doctor`, `config` as CLI
+  escape hatches.
 
 **Non-goals (this feature)**
 - Auto-triage on poll (still engineer-triggered — `interactive-feat.md` §8).
@@ -114,13 +117,18 @@ is None`, launches the TUI.
 | `noc-cli doctor` | **stays** (CI/scripting); also mirrored as `/doctor` in-TUI |
 | `noc-cli config …` | **stays** (scripting) |
 | `noc-cli --version` | **stays** |
-| `noc-cli investigate` | **removed** → `/investigate`; logic extracted to a worker-callable module |
-| `noc-cli watch` | **removed** → bare `noc-cli` |
-| `noc-cli scout` | **removed** → `/scout` (integration point for the parallel Scout branch) |
+| `noc-cli investigate` | **deprecated/hidden compatibility alias** → `/investigate`; logic extracted to a worker-callable module |
+| `noc-cli watch` | **deprecated/hidden compatibility alias** → bare `noc-cli` |
+| `noc-cli scout` | **deprecated/hidden compatibility alias** → `/scout` (integration point for the parallel Scout branch) |
 
 Launch guard: if config is missing/incomplete (no `watch_view` or creds), the TUI
 does **not** crash — it shows a "Not configured — run `noc-cli setup`" screen and
 exits cleanly. (Replaces the current `watch` command's `typer.Exit` precheck.)
+
+Compatibility rule: deprecated aliases emit a warning that names the in-TUI
+replacement, then run the same underlying implementation. They are hidden from
+`--help` so the product direction is still interactive-first. Removing them becomes
+a later breaking-change decision, not part of this feature.
 
 ### 4.2 Splash
 
@@ -159,12 +167,24 @@ typing, **no bare letter is a binding** — the entire `BINDINGS` table is rebui
 - Empty submit → no-op.
 
 Command set: `/investigate [id]`, `/scout`, `/doctor`, `/help`, `/refresh`,
-`/copy`, `/open`, `/quit`, plus the in-chat commands `/file`, `/paste`, `/revise`,
-`/retry` (§4.5). `/investigate` with no id targets the selected row; with an id,
-that ticket. `/doctor` runs `doctor.run_checks` and renders the report in a
-transient right-pane view. `/help` lists commands in the right pane. `/scout`
-opens the Scout flow in the right pane (hooks into `noc_cli/scout/` as it lands;
-until then `/scout` reports "Scout not yet available on this build").
+`/copy`, `/open`, `/clear`, `/quit`, plus the in-chat commands `/file`, `/paste`,
+`/revise`, `/retry` (§4.5). `/investigate` with no id targets the selected row;
+with an id, that ticket. `/doctor` runs `doctor.run_checks` and renders the report
+in a transient right-pane view. `/help` lists commands in the right pane. `/clear`
+clears the current draft or Chat view transcript render only; it never deletes
+`CONVERSATION.jsonl`. `/scout` opens the Scout flow in the right pane (hooks into
+`noc_cli/scout/` as it lands; until then `/scout` reports "Scout not yet available
+on this build").
+
+Shell ergonomics expected from Codex/Claude-style CLIs:
+- Command history for submitted slash commands and freeform turns (`up/down` only
+  when the queue is not consuming them; otherwise `ctrl+p`/`ctrl+n` inside the
+  input).
+- Prefix completion for slash commands and file paths used by `/file`.
+- Draft preservation per selected ticket. Switching rows does not lose a half-typed
+  analyst turn; the input restores the draft for the selected ticket.
+- Explicit busy state: while an agent turn is running, the box is disabled except
+  for `esc`; submitted text is never silently queued behind an active turn.
 
 ### 4.4 Investigate as an in-process worker
 
@@ -201,7 +221,9 @@ any selected ticket, not just triaged ones).
   and SDK resume-by-cwd works (§5.5). Cold-start (~20–30s) is surfaced as a
   "spinning up session…" line on the **first turn only**; later turns are cheap.
   Sessions are created lazily on the first freeform turn for a ticket and cached by
-  ticket id for the app's lifetime.
+  ticket id for the app's lifetime, with a small LRU cap (default 5 active clients).
+  Evicting a client closes it cleanly; the transcript remains resumable from the
+  ticket folder.
 - **Persistence.** Append-only `CONVERSATION.jsonl` in the ticket folder (portable,
   per-ticket — §8 pick over the SDK's `~/.claude/projects`), with a derived
   `CONVERSATION.md` re-rendered for reading. The `.jsonl` is the source of truth and
@@ -220,6 +242,10 @@ any selected ticket, not just triaged ones).
   `/retry` re-sends the last analyst turn (transient-failure recovery).
 - **Rendering.** Progress is phase-level, not live tokens (§5.3). The transcript
   renders in the Chat view (§4.6), newest turn at the bottom.
+- **Selection discipline.** A running chat turn is bound to the ticket id selected
+  at submit time. If the operator changes selection while the turn runs, progress
+  continues in that ticket's Chat view and the banner shows which ticket is busy;
+  the answer is never appended to the newly selected ticket by accident.
 
 ### 4.6 Right-pane view model
 
@@ -284,12 +310,19 @@ The detail pane's view list (`_DETAIL_MODES`) gains **Chat**:
   chat about"; box content preserved.
 - **Cold-start latency** → "spinning up session…" on first turn; box disabled until
   the session is ready to avoid a queued second turn corrupting the session.
+- **Ticket switch mid-turn** → turn remains attached to the original ticket id; the
+  new row can be inspected, but another chat/investigate action is blocked until the
+  active turn is interrupted or completes.
 - **`/investigate` while one runs** → existing "An investigation is already
   running." notification.
 - **Interrupt mid-investigate** → partial files may remain; the existing
   scaffold/soft-lock handles a clean re-run (no new machinery).
 - **Unknown `/command`** → notification "unknown command; try /help".
 - **Chat session spawn failure** → notification with the error; box re-enabled.
+- **Deprecated command use** → warning plus successful execution; this protects
+  existing scripts while teaching the new in-TUI command.
+- **Long-running app memory growth** → close least-recently-used chat clients beyond
+  the active-client cap; transcripts remain on disk for resume.
 
 ## 8. Safety
 
@@ -303,18 +336,20 @@ The chat agent is never granted Zendesk-write tools.
 ## 9. Testing strategy
 
 - **CLI surface** — bare `noc-cli` launches the TUI (patched `WatchApp.run`);
-  `investigate`/`watch`/`scout` are gone; `setup`/`doctor`/`config`/`--version`
-  remain. (`tests/test_cli_*`.)
+  `investigate`/`watch`/`scout` are hidden deprecated aliases with warnings;
+  `setup`/`doctor`/`config`/`--version` remain. (`tests/test_cli_*`.)
 - **Router** — slash vs freeform classification; arg parsing; unknown-command path.
-  Pure unit tests on `tui/command.py`.
+  Pure unit tests on `tui/command.py`; includes `/clear` and deprecated alias parity.
 - **TUI interaction** — Textual `Pilot`: splash → dissolve on first poll; box always
   focused; `↑/↓` navigate; `tab` cycles views incl. Chat; `esc` interrupts;
-  `/refresh`/`/open`/`/quit` dispatch.
+  `/refresh`/`/open`/`/clear`/`/quit` dispatch; command history/completion works;
+  per-ticket draft text survives row changes.
 - **Investigate worker** — phases surfaced via the progress callback (not stdout
   parsing); row flips ○→✓; reuses the `--fixture` `handoff_good.json` offline path.
 - **Chat** — session lifecycle with a mocked `ClaudeSDKClient`; `CONVERSATION.jsonl`
   append + `.md` render; redaction at the boundary; interrupt+drain ordering;
-  scaffold-on-first-chat for an un-investigated ticket.
+  scaffold-on-first-chat for an un-investigated ticket; LRU close behavior; switching
+  selected tickets mid-turn does not mis-attribute transcript output.
 - **Config-missing launch** — shows the setup hint, exits clean.
 
 ## 10. Suggested implementation order
@@ -322,14 +357,16 @@ The chat agent is never granted Zendesk-write tools.
 Monolithic delivery (one branch, lands together), but build/review in this order so
 each layer rests on a tested base:
 
-1. **CLI surface** — `invoke_without_command`, bare-`noc-cli`→TUI, remove
-   `investigate`/`watch`/`scout`, config-missing guard. (Smallest, unblocks the rest.)
+1. **CLI surface** — `invoke_without_command`, bare-`noc-cli`→TUI,
+   hidden/deprecated `investigate`/`watch`/`scout` aliases, config-missing guard.
+   (Smallest, unblocks the rest.)
 2. **Splash + version header.**
 3. **Input-first model** — `CommandInput`, rebuilt `BINDINGS`, router over existing
-   actions, investigate-as-in-process-worker, Chat added to the view list (freeform
-   still a stub hint).
-4. **Chat subsystem** — `tui/chat.py`, sessions, persistence, redaction, interrupt,
-   `/file`/`/paste`/`/revise`/`/retry`, Chat-view rendering.
+   actions, command history/completion/drafts, investigate-as-in-process-worker,
+   Chat added to the view list (freeform still a stub hint).
+4. **Chat subsystem** — `tui/chat.py`, bounded sessions, persistence, redaction,
+   interrupt, ticket-id-bound turns, `/file`/`/paste`/`/revise`/`/retry`,
+   Chat-view rendering.
 
 ## 11. Deferred / out of scope (banked)
 
@@ -360,6 +397,7 @@ Slash commands
   /copy              copy current detail
   /open              open the ticket in the browser
   /help              list commands
+  /clear             clear the current draft/rendered Chat view only
   /quit              quit
   /file <path>       (in chat) attach a local file as evidence
   /paste label=body  (in chat) attach inline text as evidence
@@ -369,3 +407,62 @@ Slash commands
 Freeform (no leading /)
   …anything…         a chat turn about the selected ticket
 ```
+
+## Appendix — design evaluation and scoring
+
+### Initial score: 88/100
+
+**Codex/Claude-style CLI resemblance: 33/40.** The spec had the right foundation:
+bare launch, input-first typing, slash commands, interrupt, transcript, and
+ticket-scoped conversational turns. It was weaker on day-to-day shell ergonomics:
+history, completion, draft preservation, explicit busy state, and compatibility
+aliases were not specified.
+
+**NOC-specific harness fit: 36/40.** The design strongly preserves the watch inbox,
+read-only hooks, fork-packet files, runbook-grounded investigate flow, and
+per-ticket evidence folders. The main gap was lifecycle discipline: a per-ticket
+agent session could leak resources or mis-attribute a response if the operator
+changed selection while a turn was running.
+
+**Failure-mode coverage: 19/20.** Good coverage for config, first-poll failure,
+cold start, unknown commands, interrupt, and chat spawn failure. Missing coverage
+was mostly compatibility breakage and long-running session growth.
+
+### Revisions made to reach >=95
+
+- Kept the TUI as the primary product surface while changing
+  `investigate`/`watch`/`scout` from immediate removals to hidden deprecated aliases
+  for one release.
+- Added shell ergonomics expected from similar interactive CLIs: history,
+  completion, per-ticket drafts, `/clear`, and explicit busy-state behavior.
+- Added a bounded chat-session lifecycle with LRU close and transcript-based resume.
+- Added ticket-id binding for running chat turns so row changes cannot append output
+  to the wrong ticket.
+- Expanded tests to cover compatibility aliases, history/completion/drafts,
+  `/clear`, LRU close, and mid-turn ticket switching.
+
+### Revised score: 96/100
+
+**Codex/Claude-style CLI resemblance: 38/40.** It now has the core REPL shape and
+the operational shell affordances an operator will expect. It intentionally does
+not chase full parity with general-purpose coding agents: no broad project-wide
+workspace chat, no unconstrained tool editing, and no live token stream.
+
+**NOC-specific harness fit: 39/40.** The design is clearly a custom NOC
+troubleshooting harness rather than a generic chat wrapper: queue-first,
+ticket-scoped, fork-packet backed, runbook-aware, read-only by default, and
+evidence-persisting.
+
+**Failure-mode coverage: 19/20.** The remaining risk is implementation complexity
+inside Textual focus/keyboard handling and SDK interrupt/drain behavior. The design
+now calls out the risk and gives testable acceptance points, but the exact polish
+will depend on implementation feedback.
+
+### Concessions
+
+- Deprecated CLI aliases remain for one release, so the first implementation will
+  not be as clean as a hard cutover to bare `noc-cli` plus slash commands.
+- Live assistant token streaming remains out of scope because the installed SDK
+  exposes phase/tool boundaries, not stable token-level streaming for this use.
+- The design keeps the current five-file fork packet as the durable artifact model
+  instead of making chat the source of truth for investigations.
