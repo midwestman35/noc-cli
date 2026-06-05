@@ -19,9 +19,9 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 
 | # | Item | Source | Status | Notes |
 |---|------|--------|--------|-------|
-| 3 | **Extract Scout orchestration from `cli.py`** — move `_run_scout_report`, `_take_*`, `_preflight_*`, `_make_writer`, `_resolve_owner_id`, `_invoke_investigate` into `noc_cli/scout/commands.py` and `noc_cli/scout/take.py`; leave `scout()` as parse + dispatch (~15 lines) | Important I1, I6; Refactor #2 | open | Stops CLI monolith growth; `cli.py` is 689 lines (+31% on this branch) |
+| 3 | **Extract Scout orchestration from `cli.py`** — move `_run_scout_report`, `_take_*`, `_preflight_*`, `_make_writer`, `_resolve_owner_id`, `_invoke_investigate` into `noc_cli/scout/commands.py` and `noc_cli/scout/take.py`; leave `scout()` as parse + dispatch (~15 lines) | Important I1, I6; Refactor #2 | **done** | `noc_cli/scout/commands.py`; `scout()` now parse+dispatch+error map; `cli.py` 708→578. Eligibility (#5) landed in `rank.py`, not a separate `take.py` |
 | 4 | **Single hooks factory** — `build_scout_options(workspace) -> (screen_factory, synth_factory)` in `profiles.py` or `scout/hooks.py` | Important I2; Refactor #3 | **done** | `noc_cli/scout/hooks.py`; `test_scout_hooks.py`; `screen.py`/`runner.py` delegate |
-| 5 | **Shared take eligibility** — `take_ineligible_reason(ticket, *, now, min_staleness_days) -> str \| None` in `rank.py` (or `scout/take.py`), shared with `rank_candidates` filters | Important I4; Refactor #5 | open | One ruleset for list + `--take` preflight |
+| 5 | **Shared take eligibility** — `take_ineligible_reason(ticket, *, now, min_staleness_days) -> str \| None` in `rank.py` (or `scout/take.py`), shared with `rank_candidates` filters | Important I4; Refactor #5 | **done** | `rank.py::take_ineligible_reason`; `rank_candidates` + preflight both use it; +5 pure tests |
 | 6 | **Shared LLM I/O helpers** — extract `_JSON_FENCE_RE`, `_extract_json`, `_final_result` to `noc_cli/scout/llm_io.py` | Important I3; Refactor #4 | **done** | `noc_cli/scout/llm_io.py`; `test_scout_llm_io.py`; `screen.py`/`synthesize.py` import it |
 
 ---
@@ -32,7 +32,7 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 |---|------|--------|--------|-------|
 | 7 | **Typed injectable boundaries** — `Protocol` for Scout Zendesk reader (`view_tickets`, `get_ticket`); type `query_fn`, `cwd` as `Path` | Important I5; Refactor #6 | open | Enables static checking; documents contracts |
 | 8 | **Surface dropped screen count** — when `len(reports) < len(candidates)`, add metadata to `ScoutReport` or stderr warning | Important I7; Refactor #8 | open | Operators trust the report when LLM JSON parse fails silently |
-| 9 | **CLI tests against public Scout API** — reduce patching of private `noc_cli.cli._*` helpers | Minor (test_cli_scout) | open | Follows naturally from #3 |
+| 9 | **CLI tests against public Scout API** — reduce patching of private `noc_cli.cli._*` helpers | Minor (test_cli_scout) | **done** | `test_cli_scout.py` patches `noc_cli.scout.commands.*`; eligibility tested mock-free in `test_scout_rank.py` |
 | 10 | **Rename `acquire.py` → `writer.py`** (or `zendesk_write.py`) | Minor; Refactor #9 | open | File only holds `ZendeskWriter`; name suggests fetch |
 
 ---
@@ -53,7 +53,7 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 
 1. ~~P0 (#1–2)~~ — complete.
 2. ~~**P1 batch A:** #4 (hooks factory) + #6 (llm_io)~~ — complete.
-3. **P1 batch B:** #3 + #5 — extract `scout/commands.py` and `scout/take.py` with shared eligibility.
+3. ~~**P1 batch B:** #3 + #5 (+ #9)~~ — complete. Eligibility landed in `rank.py`; no separate `take.py` was needed.
 4. **P2:** #7–#10 as needed before wider operator rollout or mypy enforcement.
 5. **P3:** #11 when adding the next major CLI command; rest are opportunistic.
 
