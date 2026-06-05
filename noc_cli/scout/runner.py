@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from noc_cli.scout.models import ScoutReport
+from noc_cli.scout.ports import QueryFn, TicketReader
 from noc_cli.scout.rank import rank_candidates
 from noc_cli.scout.screen import screen_candidates
 from noc_cli.scout.synthesize import synthesize
@@ -13,16 +15,16 @@ from noc_cli.scout.workspace import materialize_workspace
 
 async def run_scout(
     *,
-    client,
+    client: TicketReader,
     view_id: str,
     workspace: Path,
     now: datetime,
-    query_fn: Callable,
+    query_fn: QueryFn,
     top_k: int = 8,
     concurrency: int = 3,
     min_staleness_days: int = 7,
-    screen_options_factory: Callable | None = None,
-    synth_options_factory: Callable | None = None,
+    screen_options_factory: Callable[[], Any] | None = None,
+    synth_options_factory: Callable[[], Any] | None = None,
 ) -> ScoutReport:
     """Run the read-only Scout pipeline: rank, screen, synthesize."""
     tickets = client.view_tickets(view_id)

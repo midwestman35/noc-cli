@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 from pydantic import ValidationError
 
 from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import RankedCandidate, ScoutReport, ScreenReport
+from noc_cli.scout.ports import QueryFn
 from noc_cli.scout.profiles import SYNTHESIS, build_options
 
 SYNTHESIS_SYSTEM_PROMPT = (
@@ -49,10 +51,10 @@ def _parse_ranked(raw: str) -> list[RankedCandidate] | None:
 async def synthesize(
     reports: list[ScreenReport],
     *,
-    query_fn: Callable,
+    query_fn: QueryFn,
     now: datetime,
     options_factory: Callable | None = None,
-    cwd=".",
+    cwd: Path | str = ".",
 ) -> ScoutReport:
     """Fold screen reports into a ranked ScoutReport with deterministic fallback."""
     if not reports:

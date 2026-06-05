@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 SCREEN_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep", "LS")
 
@@ -34,7 +35,7 @@ def build_options(
     profile: Profile,
     *,
     system_prompt: str,
-    cwd,
+    cwd: Path | str,
     hooks=None,
     options_cls=None,
 ):
