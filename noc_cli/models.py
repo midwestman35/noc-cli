@@ -31,6 +31,7 @@ class Ticket(BaseModel):
     assignee_id: int | None = None      # Zendesk assignee user id; returned on view_tickets rows
     assignee_email: str | None = None   # only present when a ticket payload sideloads it
     status: str = ""
+    priority: str = ""
     tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None

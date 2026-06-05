@@ -15,6 +15,7 @@ CONFIG_ENV_KEYS = [
     "NOC_WATCH_VIEW",
     "NOC_WATCH_ASSIGNEE",
     "NOC_NOTIFY",
+    "NOC_SCOUT_VIEW",
 ]
 
 
@@ -40,7 +41,7 @@ def test_render_banner_includes_name_and_tagline():
 def test_help_lists_config_in_full_command_surface():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("setup", "doctor", "investigate", "watch", "config"):
+    for command in ("setup", "doctor", "investigate", "scout", "watch", "config"):
         assert command in result.stdout
 
 

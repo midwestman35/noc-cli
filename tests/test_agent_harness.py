@@ -70,6 +70,27 @@ def test_read_anywhere_is_allowed(tmp_path):
     assert spec.get("permissionDecision", "allow") != "deny"
 
 
+def test_restricted_read_outside_sandbox_is_denied(tmp_path):
+    sandbox = tmp_path / "scout"
+    sandbox.mkdir(parents=True)
+    pre = make_pre_tool_use(sandbox_root=sandbox, restrict_read_tools=True)
+
+    result = _run(_call(pre, _pre_event("Read", {"file_path": "/etc/passwd"})))
+
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_restricted_read_inside_sandbox_is_allowed(tmp_path):
+    sandbox = tmp_path / "scout"
+    sandbox.mkdir(parents=True)
+    pre = make_pre_tool_use(sandbox_root=sandbox, restrict_read_tools=True)
+
+    result = _run(_call(pre, _pre_event("Read", {"file_path": str(sandbox / "runbooks" / "low-audio.md")})))
+
+    spec = result.get("hookSpecificOutput", {})
+    assert spec.get("permissionDecision", "allow") != "deny"
+
+
 # ── pre-tool-use: destructive Bash ──────────────────────────────────────────
 
 

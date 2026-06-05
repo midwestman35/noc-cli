@@ -457,6 +457,59 @@ async def _run_investigate(
 
 
 @app.command()
+def scout(
+    take: Optional[int] = typer.Option(
+        None,
+        "--take",
+        help="Confirm, assign this ticket id to yourself, then investigate.",
+    ),
+    top_k: int = typer.Option(8, "--top-k", min=1, help="Candidates to screen."),
+    min_staleness_days: int = typer.Option(
+        7,
+        "--min-staleness-days",
+        min=0,
+        help="Minimum idle age before Scout considers a ticket stale.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the --take confirmation prompt."
+    ),
+) -> None:
+    """Scan Tier-1 backlog candidates needing review; optionally claim one."""
+    import httpx
+
+    from noc_cli.scout import commands
+    from noc_cli.scout.writer import ZendeskWriteError
+    from noc_cli.zendesk import ZendeskError
+
+    branding.render_banner()
+    cfg = load_config()
+
+    try:
+        if take is None:
+            commands.run_scout_list(
+                cfg, top_k=top_k, min_staleness_days=min_staleness_days
+            )
+        else:
+            commands.take_ticket(
+                cfg, ticket_id=take, min_staleness_days=min_staleness_days, yes=yes
+            )
+    except typer.Exit:
+        raise
+    except ZendeskError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except ZendeskWriteError as exc:
+        typer.secho(f"Zendesk error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except httpx.HTTPError as exc:
+        typer.secho(f"Zendesk request failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.secho(f"Scout failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def watch(
     view: str = typer.Option(
         "",
