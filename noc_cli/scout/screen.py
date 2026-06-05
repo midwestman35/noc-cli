@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import ValidationError
 
+from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import Candidate, ScreenReport
 from noc_cli.scout.profiles import SCREEN, build_options
 
@@ -20,32 +20,9 @@ SCREEN_SYSTEM_PROMPT = (
     "review."
 )
 
-_JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*(.*?)\s*```", re.DOTALL)
-
-
-def _extract_json(raw: str) -> str:
-    raw = raw.strip()
-    fenced = _JSON_FENCE_RE.search(raw)
-    if fenced:
-        return fenced.group(1).strip()
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end > start:
-        return raw[start : end + 1].strip()
-    return raw
-
-
-async def _final_result(query_gen) -> str:
-    raw = ""
-    async for message in query_gen:
-        text = getattr(message, "result", None)
-        if text is not None:
-            raw = text
-    return raw
-
-
 def _parse(raw: str, ticket_id: int) -> ScreenReport | None:
     try:
-        data = json.loads(_extract_json(raw))
+        data = json.loads(extract_json(raw))
         if isinstance(data, dict):
             data.setdefault("ticket_id", ticket_id)
         return ScreenReport.model_validate(data)
@@ -88,7 +65,7 @@ async def screen_ticket(
         '"missing_evidence": ["<needed for human triage>"], '
         '"one_line": "<=120 char summary"}'
     )
-    raw = await _final_result(query_fn(prompt=prompt, options=options_factory()))
+    raw = await final_result(query_fn(prompt=prompt, options=options_factory()))
     return _parse(raw, candidate.ticket_id)
 
 

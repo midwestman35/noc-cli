@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from datetime import datetime
 
 from pydantic import ValidationError
 
+from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import RankedCandidate, ScoutReport, ScreenReport
 from noc_cli.scout.profiles import SYNTHESIS, build_options
 
@@ -17,29 +17,6 @@ SYNTHESIS_SYSTEM_PROMPT = (
     "authorization, and you must not recommend comments, status changes, or "
     "resolution."
 )
-
-_JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*(.*?)\s*```", re.DOTALL)
-
-
-def _extract_json(raw: str) -> str:
-    raw = raw.strip()
-    fenced = _JSON_FENCE_RE.search(raw)
-    if fenced:
-        return fenced.group(1).strip()
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end > start:
-        return raw[start : end + 1].strip()
-    return raw
-
-
-async def _final_result(query_gen) -> str:
-    raw = ""
-    async for message in query_gen:
-        text = getattr(message, "result", None)
-        if text is not None:
-            raw = text
-    return raw
-
 
 def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
     ordered = sorted(
@@ -62,7 +39,7 @@ def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
 
 def _parse_ranked(raw: str) -> list[RankedCandidate] | None:
     try:
-        data = json.loads(_extract_json(raw))
+        data = json.loads(extract_json(raw))
         ranked = [RankedCandidate.model_validate(item) for item in data["ranked"]]
         return ranked or None
     except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError):
@@ -95,6 +72,6 @@ async def synthesize(
         '"rationale": "<one sentence>", "runbook_id": "<slug>", '
         '"runbook_match_confidence": <0.0-1.0>, "missing_evidence": ["..."]}]}'
     )
-    raw = await _final_result(query_fn(prompt=prompt, options=options_factory()))
+    raw = await final_result(query_fn(prompt=prompt, options=options_factory()))
     ranked = _parse_ranked(raw) or _fallback(reports)
     return ScoutReport(generated_at=now, ranked=ranked)
