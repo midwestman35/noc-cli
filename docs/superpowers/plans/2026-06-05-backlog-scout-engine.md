@@ -2,13 +2,40 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the headless Backlog Scout pipeline — discover stale Tier-1 NOC tickets, pre-screen their triability against runbooks, synthesize a ranked report, and (on explicit confirm) assign + investigate one — exposed via a `noc scout` CLI command.
+**Goal:** Build the headless Backlog Scout pipeline — discover stale Tier-1 NOC tickets that may have been forgotten, pre-screen their triage readiness against runbooks, synthesize a ranked attention report, and (on explicit confirm) claim + investigate one — exposed via a `noc scout` CLI command.
 
-**Architecture:** A three-stage funnel: (1) pure-Python staleness ranking over Zendesk view metadata — no agent; (2) a bounded `asyncio.Semaphore(3)` fan-out of fresh Haiku 4.5 `query()` calls, one per top-K candidate, each emitting a `ScreenReport`; (3) a single Opus 4.8 high-effort synthesis call folding the reports into a ranked `ScoutReport`. The agent stays 100% read-only (existing `build_hooks` sandbox); the lone Zendesk write (assign) lives in an isolated `ZendeskWriter`, invoked only behind a confirm in the CLI. This plan is **Plan 1 of 2**; the in-`watch` TUI panel is a follow-on plan that wraps `run_scout`.
+**Architecture:** A three-stage funnel: (1) pure-Python staleness ranking over Zendesk view metadata — no agent; (2) a bounded `asyncio.Semaphore(3)` fan-out of fresh Haiku 4.5 `query()` calls, one per top-K candidate, each emitting a `ScreenReport`; (3) a single Opus 4.8 high-effort synthesis call folding the reports into a ranked `ScoutReport`. The agent stays 100% read-only (existing `build_hooks` sandbox); the lone Zendesk write (assign-to-self) lives in an isolated `ZendeskWriter`, invoked only after an engineer confirmation and a fresh read preflight that rejects assigned, solved, closed, or recently updated tickets. Scout never closes, solves, comments on, or otherwise resolves a ticket. This plan is **Plan 1 of 2**; the in-`watch` TUI panel is a follow-on plan that wraps `run_scout`.
 
 **Tech Stack:** Python 3.11, pydantic v2, `claude-agent-sdk` 0.2.88 (`ClaudeAgentOptions.model`/`effort`), httpx, Typer, pytest.
 
 ---
+
+## Evaluation and Iteration Gate
+
+### Initial adversarial score: 82/100
+
+The original plan would surface stale unassigned tickets and therefore partially addresses forgotten Tier-1 backlog work, but it is not strong enough to implement as-is:
+
+- **Forgotten-ticket coverage:** positive, but too broad. `updated_at × priority` finds idle tickets, yet without a minimum staleness threshold it can spend tokens on merely quiet tickets. It also assumes the first view page is enough.
+- **False-closure risk:** moderate. The plan did not implement any close/solve action, but the original field name `resolvable` and renderer language could teach engineers to treat Scout as a closure recommendation rather than a prompt to investigate.
+- **Ownership/race risk:** moderate. `--take` assigned a ticket without first re-reading the current ticket state. A ticket could become assigned, solved, or recently updated after the report was generated.
+- **Unforeseen consequences:** token/cost spikes, Zendesk rate pressure, stale-but-intentionally-waiting tickets, duplicate work, thin-context hallucinations from subject-only screening, and audit ambiguity around the one write path.
+
+### Required revisions before implementation
+
+These deltas supersede older snippets in this plan where names differ:
+
+1. **Language:** Replace `resolvable` with `triage_ready`. Scout answers "worth an engineer's next investigation?", not "safe to close?"
+2. **Closure guard:** Prompts, models, render output, and CLI help must state or imply that Scout is not closure authorization. No close/solve/comment/status-update endpoint is implemented.
+3. **Minimum stale age:** Stage 1 accepts `min_staleness_days` and defaults the CLI to `7`; tests may pass `0` for focused arithmetic assertions.
+4. **Take preflight:** Before assigning, `--take` must re-read the ticket and abort if it is already assigned, inactive (`solved`/`closed`), or no longer stale enough.
+5. **Write isolation:** The only Zendesk mutation remains assign-to-self in `ZendeskWriter`. Agent profiles never receive Zendesk write tools.
+6. **Operator wording:** Renderer should say "candidates needing review" and "claim + investigate"; it must not say "resolve" or "close."
+7. **Future gap:** Full Zendesk view pagination and persisted `SCOUT.md` remain follow-ups unless current view size proves the first page is insufficient during live validation.
+
+### Revised score: 96/100
+
+After the revisions, the plan is good enough to implement: it finds stale, unassigned active tickets; ranks them with bounded agent cost; keeps all model work read-only; makes the single write explicit and confirmed; and avoids closure automation. Remaining misses are intentionally deferred: robust view pagination, calibrated confidence thresholds from real outcomes, and the `watch` TUI panel. Those are important, but not blockers for a headless foundation that can be tested and wrapped later.
 
 ## File Structure
 
@@ -112,7 +139,7 @@ def test_screen_report_ignores_extra_keys():
             "ticket_id": 10,
             "runbook_id": "low-audio",
             "runbook_match_confidence": 0.8,
-            "resolvable": True,
+            "triage_ready": True,
             "missing_evidence": ["pcap"],
             "one_line": "ok",
             "chatter": "ignored",
@@ -172,7 +199,7 @@ class ScreenReport(BaseModel):
     ticket_id: int
     runbook_id: str = ""
     runbook_match_confidence: float = 0.0  # 0.0–1.0
-    resolvable: bool = False
+    triage_ready: bool = False
     missing_evidence: list[str] = Field(default_factory=list)
     one_line: str = ""
 
@@ -414,7 +441,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Stage-2 screening reads runbooks; it never writes (unlike investigate).
-SCREEN_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep", "LS", "Bash")
+SCREEN_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep", "LS")
 
 
 @dataclass(frozen=True)
@@ -593,7 +620,7 @@ def _fake_query(result_json: str):
 
 GOOD = (
     '{"ticket_id": 42, "runbook_id": "low-audio", '
-    '"runbook_match_confidence": 0.7, "resolvable": true, '
+    '"runbook_match_confidence": 0.7, "triage_ready": true, '
     '"missing_evidence": ["pcap"], "one_line": "matches low-audio"}'
 )
 
@@ -610,7 +637,7 @@ def test_screen_ticket_parses_report(tmp_path):
     )
     assert report is not None
     assert report.runbook_id == "low-audio"
-    assert report.resolvable is True
+    assert report.triage_ready is True
 
 
 def test_screen_ticket_returns_none_on_garbage(tmp_path):
@@ -744,7 +771,7 @@ async def screen_ticket(
         f"(status={candidate.status}, stale {candidate.staleness_days}d).\n\n"
         "Read the runbooks under runbooks/. Emit ONLY this JSON object:\n"
         '{"ticket_id": <int>, "runbook_id": "<slug or empty>", '
-        '"runbook_match_confidence": <0.0-1.0>, "resolvable": <true|false>, '
+        '"runbook_match_confidence": <0.0-1.0>, "triage_ready": <true|false>, '
         '"missing_evidence": ["<what is needed to form a hypothesis>"], '
         '"one_line": "<=120 char summary"}'
     )
@@ -893,7 +920,7 @@ SYNTHESIS_SYSTEM_PROMPT = (
     "You are the NOC backlog synthesizer. You receive triability pre-screens for "
     "several stale tickets and must rank them by which most deserves a human "
     "engineer's attention NOW. Weigh runbook_match_confidence, whether it is "
-    "resolvable, and how little evidence is missing. Give each a one-sentence "
+    "triage_ready, and how little evidence is missing. Give each a one-sentence "
     "rationale. This ranked list is what the engineer sees — be decisive."
 )
 
@@ -1037,7 +1064,7 @@ def _fake_query(*, prompt, options):
     else:
         out = (
             '{"ticket_id": 1, "runbook_id": "low-audio", '
-            '"runbook_match_confidence": 0.8, "resolvable": true, '
+            '"runbook_match_confidence": 0.8, "triage_ready": true, '
             '"missing_evidence": [], "one_line": "ok"}'
         )
 

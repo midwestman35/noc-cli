@@ -38,8 +38,9 @@ _ZENDESK_WRITE_PREFIXES: tuple[str, ...] = (
 # Tools that write files — we check path containment for these
 _WRITE_TOOLS = frozenset({"Write", "Edit", "NotebookEdit"})
 
-# Tools that are unconditionally read-only and never blocked
-_ALWAYS_ALLOWED_TOOLS = frozenset({"Read", "Glob", "Grep", "LS"})
+# Tools that are read-only. Normal investigate runs allow broad local reads;
+# Scout can opt into sandbox-confined reads for its staged runbook workspace.
+_READ_TOOLS = frozenset({"Read", "Glob", "Grep", "LS"})
 
 
 def _deny(event: dict, reason: str) -> dict:
@@ -59,7 +60,9 @@ def _allow() -> dict:
 def _is_inside_sandbox(path_str: str, sandbox_root: Path) -> bool:
     """Return True iff path_str resolves to a path inside sandbox_root."""
     try:
-        candidate = Path(path_str).resolve()
+        path = Path(path_str)
+        candidate = path if path.is_absolute() else sandbox_root / path
+        candidate = candidate.resolve()
         resolved_sandbox = sandbox_root.resolve()
         candidate.relative_to(resolved_sandbox)
         return True
@@ -69,15 +72,23 @@ def _is_inside_sandbox(path_str: str, sandbox_root: Path) -> bool:
         return False
 
 
-def make_pre_tool_use(sandbox_root: Path):
+def make_pre_tool_use(sandbox_root: Path, *, restrict_read_tools: bool = False):
     """Return a PreToolUse hook callback enforcing the read-only sandbox."""
 
     async def pre_tool_use(input_data: dict[str, Any], tool_use_id, context) -> dict:
         tool_name: str = input_data.get("tool_name", "")
         tool_input: dict = input_data.get("tool_input", {})
 
-        # Always-allowed read tools: pass through immediately
-        if tool_name in _ALWAYS_ALLOWED_TOOLS:
+        # Read tools are normally allowed broadly for investigate evidence.
+        # Scout opts into path confinement because it only needs staged runbooks.
+        if tool_name in _READ_TOOLS:
+            if restrict_read_tools:
+                path = tool_input.get("file_path") or tool_input.get("path") or "."
+                if not _is_inside_sandbox(path, sandbox_root):
+                    return _deny(
+                        input_data,
+                        f"{tool_name} path {path!r} is outside the sandbox ({sandbox_root}).",
+                    )
             return _allow()
 
         # Zendesk write MCP calls: deny
@@ -139,6 +150,8 @@ def make_post_tool_use(events_path: Path):
 def build_hooks(
     sandbox_root: Path,
     events_path: Path,
+    *,
+    restrict_read_tools: bool = False,
 ) -> dict[str, list]:
     """Build the hooks dict for ClaudeAgentOptions.
 
@@ -154,7 +167,10 @@ def build_hooks(
     """
     from claude_agent_sdk import HookMatcher  # noqa: PLC0415
 
-    pre = make_pre_tool_use(sandbox_root=sandbox_root)
+    pre = make_pre_tool_use(
+        sandbox_root=sandbox_root,
+        restrict_read_tools=restrict_read_tools,
+    )
     post = make_post_tool_use(events_path=events_path)
 
     return {

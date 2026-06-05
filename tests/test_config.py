@@ -36,7 +36,23 @@ def test_valid_config_keys_returns_editable_field_names():
         "watch_assignee",
         "notify",
         "timezone",
+        "scout_view",
     ]
+
+
+def test_scout_view_defaults_to_tier1_queue():
+    assert config.Config().scout_view == "6490757606044"
+
+
+def test_scout_view_loads_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    monkeypatch.setenv("NOC_SCOUT_VIEW", "123")
+
+    assert config.load_config().scout_view == "123"
+
+
+def test_scout_view_is_a_valid_config_key():
+    assert "scout_view" in config.valid_config_keys()
 
 
 def test_set_config_value_preserves_siblings_in_canonical_order(monkeypatch, tmp_path):

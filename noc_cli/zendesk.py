@@ -12,6 +12,12 @@ class ZendeskError(RuntimeError):
     pass
 
 
+def build_auth_header(config: Config) -> str:
+    """Zendesk token auth header: ``Basic base64("<email>/token:<api_token>")``."""
+    raw = f"{config.zendesk_email}/token:{config.zendesk_api_token}".encode()
+    return "Basic " + base64.b64encode(raw).decode()
+
+
 class ZendeskClient:
     """Read-only Zendesk API v2 client. Performs no writes, ever."""
 
@@ -22,9 +28,7 @@ class ZendeskClient:
                 "ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, and ZENDESK_API_TOKEN."
             )
         self._base_url = config.zendesk_base_url
-        # Zendesk token auth: "<email>/token:<api_token>". Do not pre-append /token.
-        raw = f"{config.zendesk_email}/token:{config.zendesk_api_token}".encode()
-        self._auth_header = "Basic " + base64.b64encode(raw).decode()
+        self._auth_header = build_auth_header(config)
         self._client = client or httpx.Client(timeout=30.0)
 
     def _get(self, path: str, params: dict | None = None) -> dict:

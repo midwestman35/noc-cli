@@ -21,6 +21,7 @@ _FIELD_ENV: dict[str, str] = {
     "watch_assignee": "NOC_WATCH_ASSIGNEE",
     "notify": "NOC_NOTIFY",
     "timezone": "NOC_TZ",
+    "scout_view": "NOC_SCOUT_VIEW",
 }
 
 
@@ -105,6 +106,7 @@ class Config(BaseModel):
     watch_assignee: str = ""
     notify: str = "banner,ping"
     timezone: str = "local"  # "local" (system), "utc", or an IANA name e.g. America/New_York
+    scout_view: str = "6490757606044"  # Tier-1 (NOC) Queue; Backlog Scout pool
 
     @property
     def zendesk_base_url(self) -> str:

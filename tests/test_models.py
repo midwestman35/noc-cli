@@ -22,3 +22,15 @@ def test_comment_defaults_public_true():
     comment = Comment.model_validate({"id": 1, "body": "hello"})
     assert comment.public is True
     assert comment.attachments == []
+
+
+def test_ticket_captures_priority():
+    ticket = Ticket.model_validate({"id": 1, "subject": "x", "priority": "high"})
+
+    assert ticket.priority == "high"
+
+
+def test_ticket_priority_defaults_empty():
+    ticket = Ticket.model_validate({"id": 2})
+
+    assert ticket.priority == ""
