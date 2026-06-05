@@ -343,67 +343,40 @@ async def test_shift_tab_cycles_back_from_file_to_summary(db_conn, tmp_path):
     assert "# Intake for 717" not in app.current_detail_text
 
 
-@pytest.mark.skip(reason="i-key removed; investigate via /investigate — rewritten in Task 8")
-async def test_i_launches_investigate_for_selected_ticket(db_conn, tmp_path):
-    import threading
+async def test_investigate_runs_in_process_and_streams_phases(db_conn, tmp_path):
+    from textual.widgets import Input
 
-    ticket = _ticket(808)
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
-    release = threading.Event()
+    captured = {}
 
-    with patch("subprocess.Popen") as mock_popen:
-        # Empty stdout so the streaming loop exits immediately; wait() blocks
-        # until we release it, so the in-progress panel stays observable.
-        fake_proc = MagicMock()
-        fake_proc.stdout = iter(())
-        fake_proc.wait.side_effect = lambda: (release.wait(timeout=5), 0)[1]
-        fake_proc.poll.return_value = None
-        mock_popen.return_value = fake_proc
+    async def fake_run_investigation(*, ticket_id, on_line=None, **kw):
+        captured["ticket_id"] = ticket_id
+        on_line("Scaffold ready: /x")
+        on_line("Evidence gathered")
+        return tmp_path / str(ticket_id)
 
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(808)]]), WatchState(db_conn))
+    with patch("noc_cli.investigate.run_investigation", side_effect=fake_run_investigation):
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
-            await pilot.press("i")
-            await pilot.pause()
-            # Investigation now runs inline in the detail pane — no modal screen.
-            app._investigate_on_line(808, "✓ Evidence gathered")
-            await pilot.pause()
-            assert "Investigating #808" in app.current_detail_text
-            assert "Evidence gathered" in app.current_detail_text
-
-            release.set()
-            for _ in range(20):
+            box = app.query_one("#command", Input)
+            box.value = "/investigate"
+            await box.action_submit()
+            for _ in range(30):
                 await pilot.pause()
                 if app._investigating_id is None:
                     break
-            assert app._investigating_id is None
-
-    assert mock_popen.call_count == 1
-    cmd = mock_popen.call_args[0][0]
-    assert "investigate" in cmd
-    assert "808" in cmd
+    assert captured["ticket_id"] == 808
+    assert app._investigating_id is None
 
 
-@pytest.mark.skip(reason="i-key removed; investigate via /investigate — rewritten in Task 8")
-async def test_i_is_single_flight_while_running(db_conn, tmp_path):
-    ticket = _ticket(818)
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]]), WatchState(db_conn))
-
-    with patch("subprocess.Popen") as mock_popen:
-        fake_proc = MagicMock()
-        fake_proc.stdout = iter(())
-        fake_proc.poll.return_value = None
-        fake_proc.wait.return_value = 0
-        mock_popen.return_value = fake_proc
-
-        async with app.run_test(size=(120, 40)) as pilot:
-            await _poll(app, pilot)
-            # Simulate an in-flight investigation without racing the worker.
-            app._investigating_id = 818
-            await pilot.press("i")
-            await pilot.pause()
-            # Second `i` while one is running must not spawn a process.
-            assert mock_popen.call_count == 0
-            assert "already running" in app.query_one("#notification").content
+async def test_investigate_is_single_flight(db_conn, tmp_path):
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(818)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._investigating_id = 818  # simulate in-flight
+        app.action_investigate()
+        await pilot.pause()
+        assert "already running" in app.query_one("#notification").content
 
 
 async def test_new_update_badge_lifecycle(db_conn, tmp_path):

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
-import subprocess
-import sys
 import time
 import webbrowser
 from datetime import datetime, timezone
@@ -44,14 +41,6 @@ from noc_cli.watch.poller import poll_view
 from noc_cli.watch.state import TicketSnapshot, WatchState
 
 _BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-# Rich/Textual subprocess output can carry SGR colour codes and carriage-return
-# spinner frames; we strip both before showing piped lines in the detail pane.
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
-
-def _strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
 
 _DETAIL_MODES = [
     "Summary",
@@ -424,7 +413,6 @@ class WatchApp(App[None]):
         self._investigating_id: int | None = None
         self._investigate_lines: list[str] = []
         self._investigate_phases: dict[str, bool] = {}
-        self._investigate_proc: subprocess.Popen | None = None
         self._investigate_error: tuple[int, str] | None = None
         # New-update decorations (session-only): ids with an unseen change, and
         # per-id pulse deadlines (monotonic seconds).
@@ -885,15 +873,6 @@ class WatchApp(App[None]):
             self._unread_ids, live if self._pulse_phase else set()
         )
 
-    def on_unmount(self) -> None:
-        # Don't orphan a still-running child when the agent quits.
-        proc = self._investigate_proc
-        if proc is not None and proc.poll() is None:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-
     def action_focus_detail(self) -> None:
         self.query_one("#detail", DetailPane).focus()
 
@@ -916,52 +895,46 @@ class WatchApp(App[None]):
 
     @work(thread=True, exclusive=False)
     def _run_investigate(self, ticket_id: int) -> None:
-        """Run `investigate <id> --verbose` as a child process, streaming lines.
+        """Run the investigate pipeline in-process (thread worker). Streams
+        progress lines into the detail pane via _investigate_on_line."""
+        import asyncio
 
-        Non-exclusive on purpose: the poll worker is its own exclusive group, so
-        the queue can still refresh while this runs. Concurrency of multiple
-        investigations is gated by `_investigating_id` in `action_investigate`.
-        """
-        env = {**os.environ, "PYTHONUTF8": "1"}
+        from noc_cli.investigate import InvestigationError, run_investigation
+
+        owner = os.environ.get("NOC_OWNER", getattr(self._config, "owner", ""))
+
+        def emit(line: str) -> None:
+            self.app.call_from_thread(self._investigate_on_line, ticket_id, line)
+
         try:
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "noc_cli.cli", "investigate",
-                 str(ticket_id), "--verbose"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=env,
+            asyncio.run(
+                run_investigation(
+                    ticket_id=ticket_id,
+                    config=self._config,
+                    tickets_root=self._tickets_root(),
+                    owner=owner,
+                    on_line=emit,
+                )
             )
-        except Exception as exc:  # pragma: no cover - spawn failure is rare
+        except InvestigationError:
+            self.app.call_from_thread(self._investigate_finished, ticket_id, 1)
+            return
+        except Exception as exc:  # pragma: no cover
             self.app.call_from_thread(self._investigate_failed, ticket_id, str(exc))
             return
-
-        self._investigate_proc = proc
-        if proc.stdout is not None:
-            for line in proc.stdout:
-                self.app.call_from_thread(
-                    self._investigate_on_line, ticket_id, line.rstrip("\n")
-                )
-        rc = proc.wait()
-        self.app.call_from_thread(self._investigate_finished, ticket_id, rc)
+        self.app.call_from_thread(self._investigate_finished, ticket_id, 0)
 
     def _investigate_on_line(self, ticket_id: int, line: str) -> None:
         if self._investigating_id != ticket_id:
             return
-        # `set_phase` emits carriage-return spinner frames; keep only the last
-        # segment, then strip any leftover SGR colour codes.
-        segment = _strip_ansi(line.split("\r")[-1])
-        self._investigate_lines.append(segment)
-        label = detect_phase(segment)
+        self._investigate_lines.append(line)
+        label = detect_phase(line)
         if label is not None and label in self._investigate_phases:
             self._investigate_phases[label] = True
         if self._selected_is_investigating():
             self._refresh_detail()
 
     def _investigate_finished(self, ticket_id: int, rc: int) -> None:
-        self._investigate_proc = None
         self._investigating_id = None
         if rc == 0:
             # Refresh flips the row to ✓; cursor-by-id is preserved, so the
@@ -972,7 +945,6 @@ class WatchApp(App[None]):
             self._refresh_detail()
 
     def _investigate_failed(self, ticket_id: int, msg: str) -> None:
-        self._investigate_proc = None
         self._investigating_id = None
         self._investigate_error = (ticket_id, msg)
         self._refresh_detail()
