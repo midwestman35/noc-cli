@@ -20,9 +20,9 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 | # | Item | Source | Status | Notes |
 |---|------|--------|--------|-------|
 | 3 | **Extract Scout orchestration from `cli.py`** — move `_run_scout_report`, `_take_*`, `_preflight_*`, `_make_writer`, `_resolve_owner_id`, `_invoke_investigate` into `noc_cli/scout/commands.py` and `noc_cli/scout/take.py`; leave `scout()` as parse + dispatch (~15 lines) | Important I1, I6; Refactor #2 | open | Stops CLI monolith growth; `cli.py` is 689 lines (+31% on this branch) |
-| 4 | **Single hooks factory** — `build_scout_options(workspace) -> (screen_factory, synth_factory)` in `profiles.py` or `scout/hooks.py` | Important I2; Refactor #3 | open | Eliminates duplication between `screen.py` and `runner.py` |
+| 4 | **Single hooks factory** — `build_scout_options(workspace) -> (screen_factory, synth_factory)` in `profiles.py` or `scout/hooks.py` | Important I2; Refactor #3 | **done** | `noc_cli/scout/hooks.py`; `test_scout_hooks.py`; `screen.py`/`runner.py` delegate |
 | 5 | **Shared take eligibility** — `take_ineligible_reason(ticket, *, now, min_staleness_days) -> str \| None` in `rank.py` (or `scout/take.py`), shared with `rank_candidates` filters | Important I4; Refactor #5 | open | One ruleset for list + `--take` preflight |
-| 6 | **Shared LLM I/O helpers** — extract `_JSON_FENCE_RE`, `_extract_json`, `_final_result` to `noc_cli/scout/llm_io.py` | Important I3; Refactor #4 | open | ~40 LOC duplicated in `screen.py` and `synthesize.py` |
+| 6 | **Shared LLM I/O helpers** — extract `_JSON_FENCE_RE`, `_extract_json`, `_final_result` to `noc_cli/scout/llm_io.py` | Important I3; Refactor #4 | **done** | `noc_cli/scout/llm_io.py`; `test_scout_llm_io.py`; `screen.py`/`synthesize.py` import it |
 
 ---
 
@@ -52,7 +52,7 @@ Prioritized follow-up work from the thermo-nuclear code quality review of `feat/
 ## Suggested implementation order
 
 1. ~~P0 (#1–2)~~ — complete.
-2. **P1 batch A:** #4 (hooks factory) + #6 (llm_io) — small, removes duplication without moving CLI surface.
+2. ~~**P1 batch A:** #4 (hooks factory) + #6 (llm_io)~~ — complete.
 3. **P1 batch B:** #3 + #5 — extract `scout/commands.py` and `scout/take.py` with shared eligibility.
 4. **P2:** #7–#10 as needed before wider operator rollout or mypy enforcement.
 5. **P3:** #11 when adding the next major CLI command; rest are opportunistic.
