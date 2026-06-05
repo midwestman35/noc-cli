@@ -21,7 +21,7 @@ from textual.widgets import Footer, Input, Static
 
 from noc_cli import __version__
 from noc_cli.config import Config
-from noc_cli.tui.command import KNOWN_COMMANDS, parse_input
+from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
 from noc_cli.watch.diff import ChangeEvent, ChangeKind, _iso, _latest_public_comment, diff_tickets
@@ -1042,7 +1042,7 @@ class WatchApp(App[None]):
             return
         self._dispatch_command(parsed)
 
-    def _dispatch_command(self, parsed) -> None:
+    def _dispatch_command(self, parsed: ParsedCommand) -> None:
         if not parsed.is_command:
             self._stub_chat(parsed.args)  # replaced by real chat in a later task
             return
@@ -1065,6 +1065,8 @@ class WatchApp(App[None]):
             # PR #6 shipped the engine as the (now hidden/deprecated) CLI command;
             # an in-TUI Scout panel is a future task.
             self._set_notification("Scout runs from the CLI for now: `noc-cli scout`")
+        elif name in ("file", "paste", "revise", "retry"):
+            self._set_notification(f"/{name} works once chat lands (a later task).")
         else:
             self._set_notification(f"Unknown command /{name}; try /help")
 
