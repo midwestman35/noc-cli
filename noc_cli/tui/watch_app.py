@@ -19,6 +19,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Footer, Static
 
+from noc_cli import __version__
 from noc_cli.config import Config
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
@@ -485,7 +486,7 @@ class WatchApp(App[None]):
 
         label = "ticket" if self._row_count == 1 else "tickets"
         parts = [
-            "noc-cli watch",
+            f"noc-cli v{__version__}",
             "my tickets",
             f"{self._row_count} {label}",
             f"last poll {self._last_poll}",

@@ -541,3 +541,14 @@ async def test_y_copies_current_summary_or_activity(db_conn, tmp_path):
     assert mock_copy.call_count == 1
     assert mock_copy.call_args[0][0] is app
     assert "Ticket: ZD-1001" in mock_copy.call_args[0][1]
+
+
+async def test_banner_shows_version(db_conn, tmp_path):
+    from noc_cli import __version__
+
+    app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        banner = _text(app.query_one("#banner"))
+    assert f"v{__version__}" in banner
+    assert "my tickets" in banner
