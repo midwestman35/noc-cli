@@ -909,3 +909,45 @@ async def test_shift_tab_swallowed_while_menu_open(db_conn, tmp_path):
         # Menu open => shift+tab must NOT cycle the detail view.
         assert app._detail_index == 0
         assert app._ac_open is True
+
+
+async def test_enter_runs_highlighted_command(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/h"  # only /help matches "h"; help is the highlight
+        await pilot.pause()
+        assert app._ac_open is True
+        await pilot.press("enter")
+        await pilot.pause()
+        # Enter ran the HIGHLIGHTED /help (not the literal "/h"): help text
+        # rendered into the detail pane, and the box was cleared.
+        assert "/investigate" in app.current_detail_text
+        assert box.value == ""
+        assert app._ac_open is False
+
+
+async def test_escape_dismisses_menu_without_interrupting(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/in"
+        await pilot.pause()
+        assert app._ac_open is True
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app._ac_open is False
+        # Dismiss leaves the typed text in place (unlike interrupt, which
+        # clears the box), and starts/interrupts no chat session.
+        assert box.value == "/in"
+        assert app._chat_sessions == {}

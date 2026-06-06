@@ -1206,6 +1206,14 @@ class WatchApp(App[None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command":
             return
+        if self._ac_open and self._ac_matches:
+            # Run the highlighted command, ignoring the partial box text.
+            index = max(0, min(self._ac_index, len(self._ac_matches) - 1))
+            name = self._ac_matches[index].name
+            event.input.value = ""
+            self._ac_close()
+            self._dispatch_command(parse_input(f"/{name}"))
+            return
         text = event.value
         event.input.value = ""
         parsed = parse_input(text)
@@ -1292,6 +1300,9 @@ class WatchApp(App[None]):
         self._submit_chat_turn(session.last_user_turn)
 
     def action_interrupt(self) -> None:
+        if self._ac_open:
+            self._ac_close()
+            return
         target = self._chatting_id
         if target is None:
             target = self.selected_row.ticket_id if self.selected_row else None
