@@ -507,6 +507,8 @@ class WatchApp(App[None]):
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "command":
             return
+        if not self._splash_dismissed:
+            return  # the cold-start splash covers the screen; no menu yet
         # Recompute on every keystroke; reset the highlight to the best match.
         self._ac_matches = match_commands(event.value)
         self._ac_open = bool(self._ac_matches)

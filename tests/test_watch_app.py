@@ -951,3 +951,23 @@ async def test_escape_dismisses_menu_without_interrupting(db_conn, tmp_path):
         # clears the box), and starts/interrupts no chat session.
         assert box.value == "/in"
         assert app._chat_sessions == {}
+
+
+async def test_autocomplete_suppressed_during_cold_start_splash(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        # Before the first poll, the full-screen splash overlay is still up.
+        assert app._splash_dismissed is False
+        box = app.query_one("#command", Input)
+        box.value = "/"
+        await pilot.pause()
+        assert app._ac_open is False  # menu stays closed under the splash
+        # Once the first poll dismisses the splash, typing opens the menu.
+        await _poll(app, pilot)
+        box.value = "/in"
+        await pilot.pause()
+        assert app._ac_open is True
