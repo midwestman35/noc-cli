@@ -15,10 +15,12 @@ dependencies = [
     "python-dotenv>=1.0",
     "claude-agent-sdk>=0.1.0",
     "textual>=0.60",
+    "mcp>=1.0",
 ]
 
 [project.scripts]
 noc-cli = "noc_cli.cli:app"
+noc-cli-zendesk-mcp = "noc_cli.mcp.zendesk_server:main"
 
 [dependency-groups]
 dev = [
