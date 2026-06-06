@@ -1,5 +1,72 @@
 import anyio
-from noc_cli.grounding import RunbookSelection, select_runbook
+
+from noc_cli.grounding import RunbookSelection, select_runbook, verify_grounding
+from noc_cli.models import Confidence, ForkLetter, Handoff
+
+
+def _handoff(quote, slug):
+    """Build a minimal Handoff using model_validate to satisfy all required fields."""
+    d = {
+        "rubric_version": "t",
+        "intake": {"ticket_id": 1},
+        "evidence_preflight": {},
+        "fork_packet": {
+            "fork_letter": ForkLetter.B.value,
+            "confidence": Confidence.HIGH.value,
+            "symptom_tag": "[low audio]",
+            "quoted_rubric_row": quote,
+            "runbook_reference": {"slug": slug, "section": "Fork decision"},
+        },
+        "drafts": {},
+    }
+    return Handoff.model_validate(d)
+
+
+def test_verify_true_on_normalized_match():
+    from noc_cli.runbooks import _load_runbook
+
+    low_audio_text = _load_runbook("low-audio")
+    assert low_audio_text  # sanity
+    # Pick a real line and mangle whitespace/case to exercise normalisation.
+    real_line = next(l for l in low_audio_text.splitlines() if l.strip())
+    mangled = real_line.upper().replace(" ", "   ")
+    h = _handoff(mangled, "low-audio")
+    ok, note = verify_grounding(
+        h, selected_slug="low-audio", runbook_text=low_audio_text
+    )
+    assert ok is True
+
+
+def test_verify_false_when_quote_absent():
+    h = _handoff("a row that is nowhere in the runbook", "low-audio")
+    ok, note = verify_grounding(
+        h, selected_slug="low-audio", runbook_text="unrelated text"
+    )
+    assert ok is False
+    assert "low-audio" in note
+
+
+def test_verify_none_when_no_quote():
+    h = _handoff("", "low-audio")
+    ok, note = verify_grounding(h, selected_slug="low-audio", runbook_text="x")
+    assert ok is None
+
+
+def test_verify_true_on_resteer_to_a_different_runbook():
+    from noc_cli.runbooks import _load_runbook
+
+    no_ani_text = _load_runbook("no-ani")
+    assert no_ani_text  # sanity
+    quoted = next(l for l in no_ani_text.splitlines() if l.strip())
+    # selected was low-audio, but the agent re-steered and cited no-ani:
+    h = _handoff(quoted, "no-ani")
+    ok, note = verify_grounding(
+        h,
+        selected_slug="low-audio",
+        runbook_text="LOW AUDIO TEXT (selected, not cited)",
+    )
+    assert ok is True
+    assert "no-ani" in note
 
 
 def _fake_query(result_text):
