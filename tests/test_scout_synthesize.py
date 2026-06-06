@@ -67,3 +67,40 @@ def test_synthesize_empty_reports_returns_empty():
     )
 
     assert report.ranked == []
+
+
+import json  # noqa: E402
+
+
+def test_synthesize_logs_usage(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))  # redirect data_dir() to tmp
+
+    async def fake_query(*, prompt, options):
+        class R:
+            result = (
+                '{"ranked":[{"ticket_id":1,"rank":1,"rationale":"x",'
+                '"runbook_id":"low-audio","runbook_match_confidence":0.4,'
+                '"missing_evidence":[]}]}'
+            )
+            usage = {"input_tokens": 1, "cache_read_input_tokens": 0}
+            total_cost_usd = 0.0
+            num_turns = 1
+            session_id = "s"
+
+        yield R()
+
+    report = _run(
+        synthesize(
+            REPORTS,
+            query_fn=fake_query,
+            now=NOW,
+            options_factory=lambda: None,
+        )
+    )
+
+    assert report.ranked
+    usage_log = tmp_path / "usage.jsonl"
+    assert usage_log.exists()
+    line = json.loads(usage_log.read_text().splitlines()[-1])
+    assert line["surface"] == "scout_synth"
+    assert line["model"] == "claude-opus-4-8"

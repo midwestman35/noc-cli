@@ -7,9 +7,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from noc_cli.config import data_dir
+from noc_cli.model_profiles import profile_for
 from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import Candidate, ScreenReport
 from noc_cli.scout.ports import QueryFn
+from noc_cli.usage import log_usage
 
 SCREEN_SYSTEM_PROMPT = (
     "You are a NOC triage-readiness pre-screener. Given one stale ticket and "
@@ -56,7 +59,16 @@ async def screen_ticket(
         '"missing_evidence": ["<needed for human triage>"], '
         '"one_line": "<=120 char summary"}'
     )
-    raw = await final_result(query_fn(prompt=prompt, options=options_factory()))
+    _profile = profile_for("scout_screen")
+    raw = await final_result(
+        query_fn(prompt=prompt, options=options_factory()),
+        on_result=lambda m: log_usage(
+            data_dir() / "usage.jsonl",
+            surface="scout_screen",
+            profile=_profile,
+            result_message=m,
+        ),
+    )
     return _parse(raw, candidate.ticket_id)
 
 
