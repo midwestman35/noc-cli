@@ -37,6 +37,11 @@ class Ticket(BaseModel):
     updated_at: datetime | None = None
     comments: list[Comment] = Field(default_factory=list)
 
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _coerce_priority(cls, v):
+        return "" if v is None else v
+
 
 # ─── Two-axis classification enums ─────────────────────────────────────────
 

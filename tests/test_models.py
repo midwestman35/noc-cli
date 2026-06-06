@@ -34,3 +34,9 @@ def test_ticket_priority_defaults_empty():
     ticket = Ticket.model_validate({"id": 2})
 
     assert ticket.priority == ""
+
+
+def test_ticket_priority_accepts_zendesk_null():
+    ticket = Ticket.model_validate({"id": 3, "priority": None})
+
+    assert ticket.priority == ""
