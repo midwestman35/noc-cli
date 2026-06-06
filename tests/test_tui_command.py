@@ -1,4 +1,40 @@
-from noc_cli.tui.command import KNOWN_COMMANDS, parse_input
+from noc_cli.tui.command import (
+    KNOWN_COMMANDS,
+    CommandMatch,
+    match_commands,
+    parse_input,
+)
+
+
+def test_match_commands_slash_lists_all_in_insertion_order():
+    matches = match_commands("/")
+    assert [m.name for m in matches] == list(KNOWN_COMMANDS)
+
+
+def test_match_commands_prefix_filters_to_one():
+    assert [m.name for m in match_commands("/in")] == ["investigate"]
+
+
+def test_match_commands_is_case_insensitive():
+    assert [m.name for m in match_commands("/IN")] == ["investigate"]
+
+
+def test_match_commands_no_prefix_match_is_empty():
+    assert match_commands("/zzz") == []
+
+
+def test_match_commands_space_means_arguments_not_menu():
+    assert match_commands("/file foo") == []
+
+
+def test_match_commands_freeform_and_blank_are_empty():
+    assert match_commands("why is this call stuck?") == []
+    assert match_commands("") == []
+
+
+def test_command_match_carries_name_and_description():
+    [match] = match_commands("/doctor")
+    assert match == CommandMatch("doctor", KNOWN_COMMANDS["doctor"])
 
 
 def test_slash_command_with_args():
