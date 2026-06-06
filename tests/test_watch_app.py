@@ -774,3 +774,55 @@ async def test_close_all_chat_sessions_disconnects_clients(db_conn, tmp_path):
         await app._close_all_chat_sessions()
     assert disconnected["flag"] is True
     assert app._chat_sessions == {}
+
+
+async def test_autocomplete_opens_on_slash(db_conn, tmp_path):
+    from textual.widgets import Input, Static
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/"
+        await pilot.pause()
+        panel = app.query_one("#autocomplete", Static)
+        assert app._ac_open is True
+        assert panel.display is True
+        assert "/investigate" in _text(panel)
+
+
+async def test_autocomplete_filters_by_prefix(db_conn, tmp_path):
+    from textual.widgets import Input, Static
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/in"
+        await pilot.pause()
+        assert [m.name for m in app._ac_matches] == ["investigate"]
+        assert "/investigate" in _text(app.query_one("#autocomplete", Static))
+
+
+async def test_autocomplete_hidden_on_space_and_no_match(db_conn, tmp_path):
+    from textual.widgets import Input, Static
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        panel = app.query_one("#autocomplete", Static)
+        box.value = "/file foo"
+        await pilot.pause()
+        assert app._ac_open is False
+        assert panel.display is False
+        box.value = "/zzz"
+        await pilot.pause()
+        assert app._ac_open is False
+        assert panel.display is False
