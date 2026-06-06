@@ -666,3 +666,29 @@ async def test_slash_paste_attaches_evidence(db_conn, tmp_path):
         notification = app.query_one("#notification").content
     assert (tmp_path / "45747" / "logs" / "paste-siptrace.txt").read_text() == "INVITE sip:911@psap"
     assert "attached" in notification.lower()
+
+
+async def test_close_all_chat_sessions_disconnects_clients(db_conn, tmp_path):
+    from noc_cli.tui.chat import ChatSession
+    from noc_cli.tui.watch_app import WatchApp
+
+    disconnected = {"flag": False}
+
+    class _C:
+        async def connect(self): return None
+        async def disconnect(self): disconnected["flag"] = True
+        async def query(self, p): pass
+        async def receive_response(self):
+            class M: result = "ok"
+            yield M()
+        async def interrupt(self): pass
+
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        session = ChatSession(ticket_id=1, folder=tmp_path, client_factory=lambda: _C())
+        await session._ensure_client()  # create the (fake) client so close() will disconnect it
+        app._chat_sessions[1] = session
+        await app._close_all_chat_sessions()
+    assert disconnected["flag"] is True
+    assert app._chat_sessions == {}

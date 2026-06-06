@@ -647,7 +647,7 @@ class WatchApp(App[None]):
             rc, msg = self._investigate_error
             self._set_detail_text(
                 f"✗ Investigation of #{row.ticket_id} failed ({msg}).\n\n"
-                "Press [i] to retry, or check the terminal for details."
+                "Type /investigate to retry, or check the terminal for details."
             )
             self._update_tablabel()
             return
@@ -1223,3 +1223,14 @@ class WatchApp(App[None]):
         # "{icon}  {label}: {message}" layout with a plain-text ✓/✗ icon.
         icon = "✓" if r.ok else "✗"
         return f"  {icon}  {r.label}: {r.message}"
+
+    async def on_unmount(self) -> None:
+        await self._close_all_chat_sessions()
+
+    async def _close_all_chat_sessions(self) -> None:
+        for session in list(self._chat_sessions.values()):
+            try:
+                await session.close()
+            except Exception:
+                pass
+        self._chat_sessions.clear()
