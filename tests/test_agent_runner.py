@@ -347,6 +347,63 @@ def test_run_agent_passes_mcp_servers_and_allowed_tools(tmp_path):
         assert name in opts.allowed_tools
 
 
+def test_selected_runbook_injected_into_turn_prompt(tmp_path):
+    from noc_cli.scaffold import scaffold_ticket
+
+    folder = scaffold_ticket(tmp_path, 8100)
+    prompts = []
+
+    async def capture(*, prompt, options):
+        prompts.append(prompt)
+
+        class R:
+            result = '{"totally":"wrong"}'
+            is_error = False
+
+        yield R()
+
+    _run(
+        run_agent(
+            ticket_id=8100,
+            folder=folder,
+            system_prompt="sys",
+            history_context="",
+            selected_runbook_slug="low-audio",
+            selected_runbook_text="## Fork decision\nMEDIA-MARKER-XYZ rule.",
+            _query_fn=capture,
+        )
+    )
+    assert "MEDIA-MARKER-XYZ" in prompts[0]
+    assert "low-audio" in prompts[0]
+
+
+def test_no_runbook_injected_when_none(tmp_path):
+    from noc_cli.scaffold import scaffold_ticket
+
+    folder = scaffold_ticket(tmp_path, 8101)
+    prompts = []
+
+    async def capture(*, prompt, options):
+        prompts.append(prompt)
+
+        class R:
+            result = '{"totally":"wrong"}'
+            is_error = False
+
+        yield R()
+
+    _run(
+        run_agent(
+            ticket_id=8101,
+            folder=folder,
+            system_prompt="sys",
+            history_context="",
+            _query_fn=capture,
+        )
+    )
+    assert "MEDIA-MARKER-XYZ" not in prompts[0]
+
+
 def test_investigate_sets_model_profile_and_logs_usage_on_retry(tmp_path):
     folder = scaffold_ticket(tmp_path, 7001)
     captured_options = []

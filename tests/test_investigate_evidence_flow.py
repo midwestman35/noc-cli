@@ -212,6 +212,13 @@ def test_investigate_persists_ticket_and_attachments_into_sandbox(
 
     monkeypatch.setattr("noc_cli.agent.runner.run_agent", fake_run_agent)
 
+    async def fake_select_runbook(ticket_text, hypothesis, **kwargs):
+        from noc_cli.grounding import RunbookSelection
+
+        return RunbookSelection(slug=None, confidence="low", rationale="stub")
+
+    monkeypatch.setattr("noc_cli.grounding.select_runbook", fake_select_runbook)
+
     result = runner.invoke(app, ["investigate", "18432"])
     assert result.exit_code == 0, result.output
 

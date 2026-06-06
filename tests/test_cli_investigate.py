@@ -236,6 +236,12 @@ def _patch_live_investigate_deps(monkeypatch, captured, handoff=None):
             (transcript, handoff_arg, folder)
         )
 
+    async def fake_select_runbook(ticket_text, hypothesis, **kwargs):
+        from noc_cli.grounding import RunbookSelection
+
+        return RunbookSelection(slug=None, confidence="low", rationale="stub")
+
+    monkeypatch.setattr("noc_cli.grounding.select_runbook", fake_select_runbook)
     monkeypatch.setattr("noc_cli.zendesk.ZendeskClient", FakeZD)
     monkeypatch.setattr("noc_cli.history.seed_history", fake_seed_history)
     monkeypatch.setattr(

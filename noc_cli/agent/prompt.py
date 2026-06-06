@@ -59,14 +59,11 @@ the ticket folder.
    before or after the JSON block.
 
 # Grounding protocol
-- The operator's initial hypothesis (if any) is in the turn prompt. Treat it as a
-  **soft prior**, not a verdict.
-- Pick the runbook for that hypothesis (or, if none was given, the symptom you
-  infer from intake) and `Read` it from the `runbooks/` directory in your working
-  directory. Ground evidence-gathering and the fork decision in it.
-- **Re-steer freely:** if the evidence does not correlate with that runbook, load
-  a different runbook or fall back to the rubric core - and record *why* you
-  pivoted in `fork_packet.reasoning`.
+- A runbook is usually **pre-selected from the evidence and injected into your
+  turn prompt** under "## Selected runbook". Ground your fork in that runbook and
+  quote its decisive row. The operator hypothesis is a soft prior, not a verdict.
+- **Re-steer freely:** if the evidence contradicts the selected runbook, `Read` a
+  different one from `runbooks/` and record why you pivoted in `fork_packet.reasoning`.
 - If nothing fits, triage on the rubric core alone, tag `[unclassified]` (or
   `[apex]` for general platform behavior), and state plainly that you triaged
   without a specialized runbook.

@@ -80,3 +80,9 @@ def test_build_system_prompt_trims_full_rubric_to_core():
     prompt = build_system_prompt(load_rubric().text)
     assert "## Symptom Class" not in prompt
     assert "SBC sends unsolicited BYE" not in prompt
+
+
+def test_system_prompt_mentions_pre_selected_runbook():
+    sp = build_system_prompt("## Symptom Class\nx")
+    assert "selected" in sp.lower()
+    assert "turn prompt" in sp.lower() or "your prompt" in sp.lower()

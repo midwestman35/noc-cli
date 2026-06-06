@@ -25,6 +25,7 @@ _DEFAULTS: dict[str, ModelProfile] = {
     "chat": ModelProfile(model="claude-sonnet-4-6", effort="medium"),
     "scout_screen": ModelProfile(model="claude-haiku-4-5", effort="medium"),
     "scout_synth": ModelProfile(model="claude-opus-4-8", effort="high"),
+    "grounding": ModelProfile("claude-haiku-4-5", None, "medium"),
 }
 
 
