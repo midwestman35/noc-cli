@@ -179,6 +179,8 @@ async def run_agent(
     system_prompt: str,
     history_context: str,
     initial_hypothesis: str = "",
+    selected_runbook_slug: str | None = None,
+    selected_runbook_text: str | None = None,
     config=None,
     memory_store=None,
     _query_fn: Callable | None = None,
@@ -234,15 +236,32 @@ async def run_agent(
             "No analyst hypothesis was provided — infer the symptom from intake.\n\n"
         )
 
+    if selected_runbook_text and selected_runbook_slug:
+        grounding_block = (
+            f"## Selected runbook: {selected_runbook_slug}\n"
+            "This runbook was selected from the ticket evidence. Ground your fork "
+            "in it: quote its decisive row verbatim into `quoted_rubric_row` and set "
+            f"`runbook_reference.slug` to {selected_runbook_slug!r}. Re-steer to a "
+            "different staged runbook ONLY if the evidence contradicts this one, and "
+            "explain the pivot in `reasoning`.\n\n"
+            f"{selected_runbook_text}\n\n"
+        )
+    else:
+        grounding_block = (
+            "No runbook was confidently selected. Triage on the rubric core, tag "
+            "`[unclassified]` (or `[apex]` for general platform behavior), and say so "
+            "in `reasoning`.\n\n"
+        )
+
     full_prompt = (
         f"Triage ticket #{ticket_id}.\n\n"
         f"{hypothesis_line}"
+        f"{grounding_block}"
         f"Historical context (for historical_matches only — do not treat as ground truth):\n"
         f"{history_context}\n\n"
         "The ticket body and comments are in logs/00-ticket.md. Read it and every "
-        "other file under logs/, pcaps/, and analysis/. Ground your investigation in "
-        "the matching runbook under runbooks/. If no evidence covers the incident "
-        "window, return Fork D and list what is missing — do not fabricate. "
+        "other file under logs/, pcaps/, and analysis/. If no evidence covers the "
+        "incident window, return Fork D and list what is missing — do not fabricate. "
         "Emit only the Handoff JSON."
     )
 
