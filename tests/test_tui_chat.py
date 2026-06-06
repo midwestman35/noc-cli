@@ -19,7 +19,7 @@ class _FakeClient:
         self.interrupted = False
 
     async def connect(self):
-        return self
+        return None
 
     async def disconnect(self):
         return None
@@ -76,3 +76,21 @@ async def test_interrupt_delegates_to_client(tmp_path):
         pass
     await session.interrupt()
     assert fake.interrupted is True
+
+
+async def test_agent_turn_persisted_even_if_consumer_aborts(tmp_path):
+    import json
+    from noc_cli.tui.chat import ChatSession
+
+    folder = tmp_path / "555"
+    folder.mkdir()
+    session = ChatSession(ticket_id=555, folder=folder, client_factory=lambda: _FakeClient())
+
+    gen = session.send("hi")
+    await gen.__anext__()  # analyst echo ("you ❯ hi")
+    await gen.__anext__()  # first agent line ("◆ …")
+    await gen.aclose()     # consumer aborts mid-stream → GeneratorExit
+
+    convo = (folder / "CONVERSATION.jsonl").read_text().splitlines()
+    roles = [json.loads(line)["role"] for line in convo]
+    assert roles == ["you", "agent"]  # both turns persisted despite the abort

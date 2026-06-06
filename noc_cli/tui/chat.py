@@ -6,7 +6,7 @@ tests pass a fake; production lazily builds a real ClaudeSDKClient.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,7 +50,7 @@ class ChatSession:
             self._client = client
         return self._client
 
-    async def send(self, text: str) -> AsyncIterator[str]:
+    async def send(self, text: str) -> AsyncGenerator[str, None]:
         """Send one analyst turn; yield agent output lines. Persists both turns."""
         redacted, _counts = self._redact(text)
         self._append(ChatTurn(role="you", text=redacted, ts=_now()))
@@ -63,9 +63,12 @@ class ChatSession:
             result = getattr(message, "result", None)
             if result is not None:
                 reply = str(result)
-        for line in (reply or "(no response)").splitlines() or ["(no response)"]:
-            yield f"◆ {line}"
-        self._append(ChatTurn(role="agent", text=reply, ts=_now()))
+        try:
+            lines = (reply or "(no response)").splitlines()
+            for line in lines or ["(no response)"]:
+                yield f"◆ {line}"
+        finally:
+            self._append(ChatTurn(role="agent", text=reply, ts=_now()))
 
     async def interrupt(self) -> None:
         if self._client is not None:
@@ -83,6 +86,7 @@ class ChatSession:
         self._render_md()
 
     def _render_md(self) -> None:
+        # Derived read artefact — CONVERSATION.jsonl is the source of truth.
         lines = [f"# Conversation — ZD-{self._ticket_id}", ""]
         for turn in self._turns:
             who = "You" if turn.role == "you" else "Agent"
