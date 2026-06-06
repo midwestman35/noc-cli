@@ -234,6 +234,8 @@ class ForkPacket(BaseModel):
     related_jira: list[str] = Field(default_factory=list)
     master_ticket: int | None = None
     cluster: str | None = None
+    grounding_verified: bool | None = None
+    grounding_note: str = ""
 
     @field_validator("historical_matches", mode="before")
     @classmethod

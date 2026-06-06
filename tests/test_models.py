@@ -40,3 +40,16 @@ def test_ticket_priority_accepts_zendesk_null():
     ticket = Ticket.model_validate({"id": 3, "priority": None})
 
     assert ticket.priority == ""
+
+
+def test_forkpacket_grounding_fields_default_and_settable():
+    from noc_cli.models import Confidence, ForkLetter, ForkPacket
+
+    fp = ForkPacket(
+        fork_letter=ForkLetter.B, confidence=Confidence.HIGH, symptom_tag="[low audio]"
+    )
+    assert fp.grounding_verified is None
+    assert fp.grounding_note == ""
+    fp.grounding_verified = True
+    fp.grounding_note = "quoted row found in low-audio"
+    assert fp.grounding_verified is True
