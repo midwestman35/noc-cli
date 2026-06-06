@@ -21,7 +21,13 @@ from noc_cli.config import Config
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
 from noc_cli.tui.chat import ChatSession, build_sdk_client_factory
-from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
+from noc_cli.tui.command import (
+    KNOWN_COMMANDS,
+    CommandMatch,
+    ParsedCommand,
+    match_commands,
+    parse_input,
+)
 from noc_cli.watch.diff import (
     ChangeEvent,
     ChangeKind,
@@ -133,6 +139,17 @@ Screen { layout: vertical; layers: base overlay; }
 #command {
     height: 3;
     border: round $accent;
+}
+#autocomplete {
+    layer: overlay;
+    dock: bottom;
+    offset: 0 -4;
+    width: 100%;
+    height: auto;
+    background: $surface;
+    border: round $accent;
+    padding: 0 1;
+    display: none;
 }
 """
 
@@ -441,6 +458,11 @@ class WatchApp(App[None]):
         # settling to just the steady `!` badge.
         self._pulse_phase = False
         self._splash_dismissed = False
+        # Command-palette autocomplete: matches for the current `/fragment`,
+        # the highlighted row, and whether the menu is currently shown.
+        self._ac_matches: list[CommandMatch] = []
+        self._ac_index: int = 0
+        self._ac_open: bool = False
 
     @property
     def selected_row(self) -> InboxRow | None:
@@ -470,6 +492,7 @@ class WatchApp(App[None]):
             id="command",
         )
         yield Footer()
+        yield Static("", id="autocomplete", markup=False)
         yield Static(self._splash_text(), id="splash", markup=False)
 
     def on_mount(self) -> None:
@@ -480,6 +503,47 @@ class WatchApp(App[None]):
             self.set_interval(self._poll_interval, self.action_poll_now)
             self.action_poll_now()
         self.set_interval(0.1, self._tick_spinner)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "command":
+            return
+        # Recompute on every keystroke; reset the highlight to the best match.
+        self._ac_matches = match_commands(event.value)
+        self._ac_open = bool(self._ac_matches)
+        self._ac_index = 0
+        self._render_autocomplete()
+
+    def _render_autocomplete(self) -> None:
+        try:
+            panel = self.query_one("#autocomplete", Static)
+        except NoMatches:
+            return
+        if not self._ac_open:
+            # _ac_open is the single source of truth (set to bool(_ac_matches)
+            # and toggled by _ac_close), so checking it alone is sufficient.
+            panel.update("")  # drop stale rows so a hidden panel holds nothing
+            panel.display = False
+            return
+        panel.display = True
+        text = Text()
+        for index, match in enumerate(self._ac_matches):
+            selected = index == self._ac_index
+            line = Text()
+            line.append("▸ " if selected else "  ")
+            line.append(f"/{match.name}".ljust(14))
+            line.append(" ")
+            line.append(match.description, style="dim")
+            line.append("\n")
+            if selected:
+                line.stylize("on grey23")
+            text.append_text(line)
+        text.append("↑↓ select · Tab complete · Enter run · Esc dismiss", style="dim")
+        panel.update(text)
+
+    def _ac_close(self) -> None:
+        self._ac_open = False
+        self._ac_matches = []
+        self._render_autocomplete()
 
     def _tick_spinner(self) -> None:
         busy = (
