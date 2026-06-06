@@ -10,7 +10,15 @@ from noc_cli.redact import redact_value
 from noc_cli.zendesk import ZendeskClient, ZendeskError
 
 SEARCH_CAP = 25
-READ_TOOL_NAMES = ("get_ticket", "get_comments", "search")
+
+
+def _build_client() -> ZendeskClient:
+    config = Config(
+        zendesk_subdomain=os.environ.get("ZENDESK_SUBDOMAIN", ""),
+        zendesk_email=os.environ.get("ZENDESK_EMAIL", ""),
+        zendesk_api_token=os.environ.get("ZENDESK_API_TOKEN", ""),
+    )
+    return ZendeskClient(config)
 
 
 def _map_error(exc: Exception) -> dict[str, Any]:
@@ -19,7 +27,7 @@ def _map_error(exc: Exception) -> dict[str, Any]:
 
     if isinstance(exc, ZendeskError):
         kind = "auth" if "auth" in str(exc).lower() else "transient"
-        return {"error": str(exc), "kind": kind}
+        return {"error": str(exc)[:200], "kind": kind}
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
         if code == 404:
@@ -27,7 +35,7 @@ def _map_error(exc: Exception) -> dict[str, Any]:
         if code in (401, 403):
             return {"error": "auth failed", "kind": "auth"}
         return {"error": f"http {code}", "kind": "transient"}
-    return {"error": str(exc) or exc.__class__.__name__, "kind": "transient"}
+    return {"error": (str(exc) or exc.__class__.__name__)[:200], "kind": "transient"}
 
 
 def _log_residual(tool: str, ref: object, n: int) -> None:
@@ -37,7 +45,7 @@ def _log_residual(tool: str, ref: object, n: int) -> None:
 
 def fetch_ticket(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
     try:
-        t = client.get_ticket(int(ticket_id))
+        t = client.get_ticket(ticket_id)
     except Exception as exc:  # noqa: BLE001 — boundary: never raise into the turn
         return _map_error(exc)
     payload = {
@@ -58,7 +66,7 @@ def fetch_ticket(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
 
 def fetch_comments(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
     try:
-        comments = client.get_comments(int(ticket_id))
+        comments = client.get_comments(ticket_id)
     except Exception as exc:  # noqa: BLE001
         return _map_error(exc)
     items = [
@@ -90,7 +98,7 @@ def search_tickets(client: ZendeskClient, query: str, cap: int = SEARCH_CAP) -> 
         for t in (tickets or [])[:cap]
     ]
     redacted, n = redact_value({"results": items, "count": len(items)})
-    _log_residual("search", query, n)
+    _log_residual("search", f"query[{len(query)} chars]", n)
     return redacted
 
 
@@ -135,12 +143,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def _build_client() -> ZendeskClient:
-    config = Config(
-        zendesk_subdomain=os.environ.get("ZENDESK_SUBDOMAIN", ""),
-        zendesk_email=os.environ.get("ZENDESK_EMAIL", ""),
-        zendesk_api_token=os.environ.get("ZENDESK_API_TOKEN", ""),
-    )
-    return ZendeskClient(config)
