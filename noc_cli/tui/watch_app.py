@@ -1126,10 +1126,25 @@ class WatchApp(App[None]):
             self._set_notification(f"Unknown command /{name}; try /help")
 
     def action_interrupt(self) -> None:
-        # A later task wires this to chat interrupt; for now clear the box.
+        target = self._chatting_id
+        if target is None:
+            target = self.selected_row.ticket_id if self.selected_row else None
+        session = self._chat_sessions.get(target) if target is not None else None
+        if session is not None:
+            self._interrupt_chat(session)
+            self._set_notification("Interrupting…")
+            return
+        # Idle (no chat session to interrupt): clear the box.
         try:
             self.query_one("#command", Input).value = ""
         except NoMatches:
+            pass
+
+    @work(thread=False, exclusive=False)
+    async def _interrupt_chat(self, session: ChatSession) -> None:
+        try:
+            await session.interrupt()
+        except Exception:
             pass
 
     def action_scroll_detail_up(self) -> None:

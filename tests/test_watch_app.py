@@ -573,6 +573,40 @@ async def test_second_chat_turn_blocked_while_one_in_flight(db_conn, tmp_path):
         assert app._chat_lines.get(500) is None or app._chat_lines.get(500) == []
 
 
+async def test_escape_interrupts_active_chat(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    interrupted = {"flag": False}
+
+    class _SlowClient:
+        async def connect(self): return None
+        async def disconnect(self): return None
+        async def query(self, prompt): pass
+        async def receive_response(self):
+            class M:
+                result = "partial"
+            yield M()
+        async def interrupt(self): interrupted["flag"] = True
+
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn))
+    app._chat_client_factory = lambda folder: (lambda: _SlowClient())
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "explain"
+        await box.action_submit()
+        await pilot.pause()
+        # Ensure a live session exists, then interrupt via escape.
+        session = app._ensure_chat_session(500)
+        await session._ensure_client()
+        await pilot.press("escape")
+        for _ in range(20):
+            await pilot.pause()
+            if interrupted["flag"]:
+                break
+    assert interrupted["flag"] is True
+
+
 async def test_freeform_input_starts_chat_and_renders(db_conn, tmp_path):
     from textual.widgets import Input
 
