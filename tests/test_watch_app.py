@@ -471,9 +471,6 @@ async def test_pulse_marks_changed_ticket_then_expires(db_conn, tmp_path):
 
     async with app.run_test(size=(140, 40)) as pilot:
         await _poll(app, pilot)
-        from noc_cli.tui.watch_app import TicketList
-
-        ticket_list = app.query_one("#ticket-list", TicketList)
         if app.selected_row.ticket_id != 761:
             app.action_cursor_down()
             await pilot.pause()
