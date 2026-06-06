@@ -8,7 +8,7 @@ from dataclasses import dataclass
 # Command name -> one-line help, shown by /help and used to validate input.
 KNOWN_COMMANDS: dict[str, str] = {
     "investigate": "investigate the selected (or given) ticket",
-    "scout": "open Backlog Scout",
+    "scout": "Backlog Scout (runs via CLI for now)",
     "doctor": "run health checks",
     "help": "list commands",
     "refresh": "poll now",
