@@ -9,8 +9,10 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from noc_cli.model_profiles import profile_for
 from noc_cli.models import Handoff
 from noc_cli.scaffold import TicketFolder
+from noc_cli.usage import log_usage
 
 MAX_TURNS = 40
 ALLOWED_TOOLS = [
@@ -113,14 +115,18 @@ def _stash_transcript(
     return transcript_path
 
 
-async def _drain(query_gen) -> tuple[str, list[TranscriptEntry]]:
+async def _drain(
+    query_gen, on_result: Callable[[object], None] | None = None
+) -> tuple[str, list[TranscriptEntry]]:
     """Drain the agent stream and keep both final result and intermediate turns."""
     raw = ""
     transcript: list[TranscriptEntry] = []
+    result_message = None
     async for message in query_gen:
         result_text = getattr(message, "result", None)
         if result_text is not None:
             raw = result_text
+            result_message = message
             transcript.append(
                 TranscriptEntry(
                     kind="result",
@@ -162,6 +168,8 @@ async def _drain(query_gen) -> tuple[str, list[TranscriptEntry]]:
                         raw_text=str(tool_result),
                     )
                 )
+    if on_result is not None and result_message is not None:
+        on_result(result_message)
     return raw, transcript
 
 
@@ -193,6 +201,7 @@ async def run_agent(
 
     events_path = folder.root / "events.jsonl"
     hooks = build_hooks(sandbox_root=folder.root, events_path=events_path)
+    profile = profile_for("investigate")
 
     mcp_servers: dict = {}
     extra_tools: list[str] = []
@@ -210,6 +219,9 @@ async def run_agent(
             cwd=str(folder.root),
             hooks=hooks,
             mcp_servers=mcp_servers,
+            model=profile.model,
+            fallback_model=profile.fallback_model,
+            effort=profile.effort,
         )
 
     if initial_hypothesis:
@@ -236,7 +248,16 @@ async def run_agent(
 
     # Attempt 1
     gen1 = _query_fn(prompt=full_prompt, options=_make_options())
-    raw1, transcript1 = await _drain(gen1)
+    raw1, transcript1 = await _drain(
+        gen1,
+        on_result=lambda message: log_usage(
+            events_path,
+            surface="investigate",
+            profile=profile,
+            result_message=message,
+            attempt=1,
+        ),
+    )
     handoff = _try_parse(raw1)
     if handoff is not None:
         _stash_transcript(folder, transcript1)
@@ -251,7 +272,16 @@ async def run_agent(
         "The top-level keys must be: intake, evidence_preflight, fork_packet, drafts, rubric_version."
     )
     gen2 = _query_fn(prompt=correction_prompt, options=_make_options())
-    raw2, transcript2 = await _drain(gen2)
+    raw2, transcript2 = await _drain(
+        gen2,
+        on_result=lambda message: log_usage(
+            events_path,
+            surface="investigate",
+            profile=profile,
+            result_message=message,
+            attempt=2,
+        ),
+    )
     handoff2 = _try_parse(raw2)
     combined = transcript1 + transcript2
     if handoff2 is not None:

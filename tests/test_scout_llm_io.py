@@ -32,3 +32,33 @@ def test_final_result_keeps_last_result_text():
         yield _Msg("final")
 
     assert _run(final_result(gen())) == "final"
+
+
+def test_final_result_invokes_callback_with_terminal_message():
+    class _Msg:
+        def __init__(self, result=None):
+            self.result = result
+
+    first = _Msg("first")
+    terminal = _Msg("final")
+    seen = []
+
+    async def gen():
+        yield _Msg()
+        yield first
+        yield terminal
+
+    assert _run(final_result(gen(), on_result=seen.append)) == "final"
+    assert seen == [terminal]
+
+
+def test_final_result_preserves_behavior_without_callback():
+    class _Msg:
+        def __init__(self, result=None):
+            self.result = result
+
+    async def gen():
+        yield _Msg("first")
+        yield _Msg("final")
+
+    assert _run(final_result(gen())) == "final"

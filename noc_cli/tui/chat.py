@@ -60,6 +60,9 @@ class ChatSession:
 
     async def send(self, text: str) -> AsyncGenerator[str, None]:
         """Send one analyst turn; yield agent output lines. Persists both turns."""
+        from noc_cli.model_profiles import profile_for  # noqa: PLC0415
+        from noc_cli.usage import log_usage  # noqa: PLC0415
+
         redacted, _counts = self._redact(text)
         self._append(ChatTurn(role="you", text=redacted, ts=_now()))
         yield f"you ❯ {redacted}"
@@ -67,16 +70,25 @@ class ChatSession:
         client = await self._ensure_client()
         await client.query(redacted)
         reply = ""
+        terminal_message = None
         async for message in client.receive_response():
             result = getattr(message, "result", None)
             if result is not None:
                 reply = str(result)
+                terminal_message = message
         try:
             lines = (reply or "(no response)").splitlines()
             for line in lines or ["(no response)"]:
                 yield f"◆ {line}"
         finally:
             self._append(ChatTurn(role="agent", text=reply, ts=_now()))
+            if terminal_message is not None:
+                log_usage(
+                    self._folder / "events.jsonl",
+                    surface="chat",
+                    profile=profile_for("chat"),
+                    result_message=terminal_message,
+                )
 
     async def interrupt(self) -> None:
         if self._client is not None:
@@ -119,13 +131,17 @@ def build_sdk_client_factory(folder: Path) -> Callable:
         )
 
         from noc_cli.agent.harness import build_hooks  # noqa: PLC0415
+        from noc_cli.model_profiles import profile_for  # noqa: PLC0415
 
+        _profile = profile_for("chat")
         hooks = build_hooks(sandbox_root=folder, events_path=folder / "events.jsonl")
         options = ClaudeAgentOptions(
             allowed_tools=["Read", "Glob", "Grep", "LS"],
             permission_mode="bypassPermissions",
             cwd=str(folder),
             hooks=hooks,
+            model=_profile.model,
+            effort=_profile.effort,
         )
         return ClaudeSDKClient(options=options)
 

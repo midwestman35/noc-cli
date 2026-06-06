@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from noc_cli.model_profiles import profile_for
+
 SCREEN_TOOLS: tuple[str, ...] = ("Read", "Glob", "Grep", "LS")
 
 
@@ -16,16 +18,19 @@ class Profile:
     allowed_tools: tuple[str, ...]
 
 
+_SCREEN_PROFILE = profile_for("scout_screen")
+_SYNTHESIS_PROFILE = profile_for("scout_synth")
+
 SCREEN = Profile(
-    model="claude-haiku-4-5",
-    effort="medium",
+    model=_SCREEN_PROFILE.model,
+    effort=_SCREEN_PROFILE.effort,
     max_turns=12,
     allowed_tools=SCREEN_TOOLS,
 )
 
 SYNTHESIS = Profile(
-    model="claude-opus-4-8",
-    effort="high",
+    model=_SYNTHESIS_PROFILE.model,
+    effort=_SYNTHESIS_PROFILE.effort,
     max_turns=6,
     allowed_tools=(),
 )

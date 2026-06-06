@@ -7,10 +7,13 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from noc_cli.config import data_dir
+from noc_cli.model_profiles import profile_for
 from noc_cli.scout.llm_io import extract_json, final_result
 from noc_cli.scout.models import RankedCandidate, ScoutReport, ScreenReport
 from noc_cli.scout.ports import QueryFn
 from noc_cli.scout.profiles import SYNTHESIS, build_options
+from noc_cli.usage import log_usage
 
 SYNTHESIS_SYSTEM_PROMPT = (
     "You are the NOC backlog synthesizer. Rank stale ticket pre-screens by "
@@ -78,6 +81,15 @@ async def synthesize(
         '"rationale": "<one sentence>", "runbook_id": "<slug>", '
         '"runbook_match_confidence": <0.0-1.0>, "missing_evidence": ["..."]}]}'
     )
-    raw = await final_result(query_fn(prompt=prompt, options=options_factory()))
+    _profile = profile_for("scout_synth")
+    raw = await final_result(
+        query_fn(prompt=prompt, options=options_factory()),
+        on_result=lambda m: log_usage(
+            data_dir() / "usage.jsonl",
+            surface="scout_synth",
+            profile=_profile,
+            result_message=m,
+        ),
+    )
     ranked = _parse_ranked(raw) or _fallback(reports)
     return ScoutReport(generated_at=now, ranked=ranked)
