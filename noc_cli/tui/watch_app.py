@@ -458,6 +458,13 @@ class WatchApp(App[None]):
         # settling to just the steady `!` badge.
         self._pulse_phase = False
         self._splash_dismissed = False
+        self._scout_active: bool = False
+        self._scouting: bool = False
+        self._scout_report = None
+        self._scout_error: str | None = None
+        self._pending_take: int | None = None
+        self._pending_take_owner: int | None = None
+        self._investigate_after_poll: int | None = None
         # Command-palette autocomplete: matches for the current `/fragment`,
         # the highlighted row, and whether the menu is currently shown.
         self._ac_matches: list[CommandMatch] = []
@@ -568,15 +575,20 @@ class WatchApp(App[None]):
             self._polling
             or self._investigating_id is not None
             or self._chatting_id is not None
+            or self._scouting
         )
         if busy:
             self._spinner_frame = (self._spinner_frame + 1) % len(_BRAILLE)
             if self._polling:
                 self._update_banner()
-            if self._selected_is_investigating() or (
-                self._chatting_id is not None
-                and self.selected_row is not None
-                and self.selected_row.ticket_id == self._chatting_id
+            if (
+                self._scouting
+                or self._selected_is_investigating()
+                or (
+                    self._chatting_id is not None
+                    and self.selected_row is not None
+                    and self.selected_row.ticket_id == self._chatting_id
+                )
             ):
                 self._refresh_detail()
 
@@ -733,6 +745,11 @@ class WatchApp(App[None]):
         # including mid-investigate and the error state.
         self._update_detail_header()
 
+        if self._scout_active:
+            self._set_detail_text(self._render_scout_panel())
+            self._update_tablabel()
+            return
+
         # Live investigation takes over the detail pane while it runs; navigate
         # away and the gate falls through to the normal detail, back and the
         # live panel re-renders from the buffer.
@@ -847,6 +864,10 @@ class WatchApp(App[None]):
         try:
             label = self.query_one("#detail-tablabel", Static)
         except NoMatches:
+            return
+
+        if self._scout_active:
+            label.update("Backlog Scout — Tier-1 backlog")
             return
 
         if self._selected_is_investigating():
@@ -1100,6 +1121,70 @@ class WatchApp(App[None]):
             lines.append(f"  {raw}")
         return "\n".join(lines)
 
+    def action_scout(self) -> None:
+        if self._scouting:
+            self._set_notification("Scout is already running.")
+            return
+        self._scout_active = True
+        self._scouting = True
+        self._scout_report = None
+        self._scout_error = None
+        self._refresh_detail()
+        self._run_scout()
+
+    @work(thread=True, exclusive=False)
+    def _run_scout(self) -> None:
+        from noc_cli.scout import commands
+
+        try:
+            report = commands.run_scout_report(
+                self._config, top_k=8, min_staleness_days=7
+            )
+        except Exception as exc:
+            self.app.call_from_thread(self._scout_failed, str(exc))
+            return
+        self.app.call_from_thread(self._scout_finished, report)
+
+    def _scout_finished(self, report) -> None:
+        self._scouting = False
+        self._scout_report = report
+        self._scout_error = None
+        self._refresh_detail()
+
+    def _scout_failed(self, msg: str) -> None:
+        self._scouting = False
+        self._scout_report = None
+        self._scout_error = msg
+        self._refresh_detail()
+
+    def _render_scout_panel(self) -> str:
+        if self._scouting:
+            return f"{_BRAILLE[self._spinner_frame]} Scouting the Tier-1 backlog …"
+        if self._scout_error is not None:
+            return (
+                f"Scout failed: {self._scout_error}\n\n"
+                "Type /scout to retry, or check the terminal for details."
+            )
+        if self._scout_report is None:
+            return "No scout report yet."
+
+        from noc_cli.scout.render import render_scout_report
+
+        lines = [render_scout_report(self._scout_report)]
+        if self._scout_report.dropped > 0:
+            lines.extend(
+                [
+                    "",
+                    (
+                        f"{self._scout_report.dropped} of "
+                        f"{self._scout_report.candidates_screened} screens could "
+                        "not be parsed and were dropped."
+                    ),
+                ]
+            )
+        lines.extend(["", "/take <id> to claim + investigate · Esc to leave"])
+        return "\n".join(lines)
+
     def _render_chat_panel(self) -> str:
         row = self.selected_row
         if row is None:
@@ -1243,9 +1328,7 @@ class WatchApp(App[None]):
         elif name == "doctor":
             self._run_doctor()
         elif name == "scout":
-            # PR #6 shipped the engine as the (now hidden/deprecated) CLI command;
-            # an in-TUI Scout panel is a future task.
-            self._set_notification("Scout runs from the CLI for now: `noc-cli scout`")
+            self.action_scout()
         elif name == "file":
             self._attach_file(parsed.args)
         elif name == "paste":
@@ -1304,6 +1387,10 @@ class WatchApp(App[None]):
     def action_interrupt(self) -> None:
         if self._ac_open:
             self._ac_close()
+            return
+        if self._scout_active:
+            self._scout_active = False
+            self._refresh_detail()
             return
         target = self._chatting_id
         if target is None:

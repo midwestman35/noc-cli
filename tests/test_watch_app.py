@@ -971,3 +971,118 @@ async def test_autocomplete_suppressed_during_cold_start_splash(db_conn, tmp_pat
         box.value = "/in"
         await pilot.pause()
         assert app._ac_open is True
+
+
+async def test_scout_renders_ranked_report(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    from noc_cli.scout.models import RankedCandidate, ScoutReport
+
+    report = ScoutReport(
+        ranked=[
+            RankedCandidate(
+                ticket_id=5012,
+                rank=1,
+                rationale="repeated egress drop",
+                runbook_id="low-audio",
+                runbook_match_confidence=0.8,
+            )
+        ],
+        candidates_screened=1,
+        reports_parsed=1,
+    )
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch(
+            "noc_cli.scout.commands.run_scout_report", return_value=report
+        ) as run:
+            box = app.query_one("#command", Input)
+            box.value = "/scout"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+    assert run.call_count == 1
+    assert app._scout_active is True
+    assert "#5012" in app.current_detail_text
+    assert "low-audio" in app.current_detail_text
+
+
+async def test_escape_leaves_scout_panel(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    from noc_cli.scout.models import RankedCandidate, ScoutReport
+
+    report = ScoutReport(
+        ranked=[
+            RankedCandidate(
+                ticket_id=5012,
+                rank=1,
+                rationale="repeated egress drop",
+                runbook_id="low-audio",
+                runbook_match_confidence=0.8,
+            )
+        ],
+        candidates_screened=1,
+        reports_parsed=1,
+    )
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch("noc_cli.scout.commands.run_scout_report", return_value=report):
+            box = app.query_one("#command", Input)
+            box.value = "/scout"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        assert app._scout_active is True
+        assert "#5012" in app.current_detail_text
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+    assert app._scout_active is False
+    assert "Ticket: ZD-1" in app.current_detail_text
+    assert "#5012" not in app.current_detail_text
+
+
+async def test_scout_single_flight(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._scouting = True
+        with patch("noc_cli.scout.commands.run_scout_report") as run:
+            box = app.query_one("#command", Input)
+            box.value = "/scout"
+            await box.action_submit()
+            await pilot.pause()
+        run.assert_not_called()
+
+
+async def test_scout_engine_error_shows_in_panel(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch(
+            "noc_cli.scout.commands.run_scout_report",
+            side_effect=ZendeskError("auth failed"),
+        ):
+            box = app.query_one("#command", Input)
+            box.value = "/scout"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+    assert "Scout failed" in app.current_detail_text
+    assert "auth failed" in app.current_detail_text
