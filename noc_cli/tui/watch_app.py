@@ -1151,7 +1151,7 @@ class WatchApp(App[None]):
 
     def _attach_paste(self, arg: str) -> None:
         row = self.selected_row
-        if row is None or "=" not in arg:
+        if row is None or "=" not in arg or not arg.partition("=")[0].strip():
             self._set_notification("Usage: /paste label=body (with a ticket selected)")
             return
         from noc_cli.evidence import PasteInput, gather_evidence

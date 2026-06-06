@@ -651,3 +651,18 @@ async def test_slash_file_attaches_evidence(db_conn, tmp_path):
         notification_text = app.query_one("#notification").content
     assert (tmp_path / "45747" / "logs" / "pcap-excerpt.txt").exists()
     assert "attached" in notification_text.lower()
+
+
+async def test_slash_paste_attaches_evidence(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/paste siptrace=INVITE sip:911@psap"
+        await box.action_submit()
+        await pilot.pause()
+        notification = app.query_one("#notification").content
+    assert (tmp_path / "45747" / "logs" / "paste-siptrace.txt").read_text() == "INVITE sip:911@psap"
+    assert "attached" in notification.lower()
