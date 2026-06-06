@@ -995,7 +995,7 @@ class WatchApp(App[None]):
         body = self._chat_lines.get(row.ticket_id, [])
         if not body:
             return "\n".join(lines + ["Type a message in the box to start."])
-        lines.extend(body)
+        lines.extend(body[-500:])
         if self._chatting_id == row.ticket_id:
             frame = _BRAILLE[self._spinner_frame]
             lines.append(f"{frame} …")
@@ -1006,9 +1006,11 @@ class WatchApp(App[None]):
         if row is None:
             self._set_notification("Select a ticket to chat about.")
             return
+        if self._chatting_id is not None:
+            self._set_notification("Chat turn in progress — wait for it to finish.")
+            return
         ticket_id = row.ticket_id
         self._detail_index = _DETAIL_MODES.index("Chat")
-        self._chat_lines.setdefault(ticket_id, [])
         self._run_chat(ticket_id, text)
 
     def _ensure_chat_session(self, ticket_id: int) -> ChatSession:

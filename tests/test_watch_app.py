@@ -561,6 +561,18 @@ async def test_tab_reaches_chat_view(db_conn, tmp_path):
     assert "700" in detail
 
 
+async def test_second_chat_turn_blocked_while_one_in_flight(db_conn, tmp_path):
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._chatting_id = 500  # simulate a turn already in flight
+        app._submit_chat_turn("another question")
+        await pilot.pause()
+        assert "in progress" in app.query_one("#notification").content.lower()
+        # No second chat buffer was created for the rejected turn.
+        assert app._chat_lines.get(500) is None or app._chat_lines.get(500) == []
+
+
 async def test_freeform_input_starts_chat_and_renders(db_conn, tmp_path):
     from textual.widgets import Input
 
