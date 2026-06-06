@@ -12,6 +12,34 @@ def anyio_backend():
     return "asyncio"
 
 
+async def test_investigate_forwards_config_and_memory_store_to_run_agent(monkeypatch, tmp_path):
+    """Agent path must forward config + memory_store to run_agent."""
+    import noc_cli.agent.runner as runner_mod
+    from noc_cli.investigate import InvestigationError, run_investigation
+
+    captured: dict = {}
+
+    async def fake_run_agent(**kwargs):
+        captured.update(kwargs)
+        raise InvestigationError("stop after capture")
+
+    monkeypatch.setattr(runner_mod, "run_agent", fake_run_agent)
+
+    cfg = _cfg(tmp_path)
+    with pytest.raises(InvestigationError):
+        await run_investigation(
+            ticket_id=9999,
+            config=cfg,
+            tickets_root=tmp_path,
+            owner="tester",
+            no_agent=False,
+        )
+
+    assert "config" in captured, "run_agent was not called or did not receive config"
+    assert "memory_store" in captured, "run_agent was not called or did not receive memory_store"
+    assert captured["config"] is cfg
+
+
 def _cfg(tmp_path) -> Config:
     return Config(
         zendesk_subdomain="carbyne",
