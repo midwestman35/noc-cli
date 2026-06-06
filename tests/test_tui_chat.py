@@ -99,6 +99,51 @@ async def test_agent_turn_persisted_even_if_consumer_aborts(tmp_path):
     assert roles == ["you", "agent"]  # both turns persisted despite the abort
 
 
+def test_chat_options_use_sonnet_profile(tmp_path, monkeypatch):
+    from noc_cli.tui.chat import build_sdk_client_factory
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, options=None):
+            captured["options"] = options
+
+    import claude_agent_sdk
+
+    monkeypatch.setattr(claude_agent_sdk, "ClaudeSDKClient", FakeClient)
+    build_sdk_client_factory(tmp_path)()
+
+    assert captured["options"].model == "claude-sonnet-4-6"
+    assert captured["options"].effort == "medium"
+
+
+async def test_usage_logged_after_agent_turn(tmp_path):
+    """A surface='chat' usage line is written to events.jsonl after a turn."""
+    import json
+
+    from noc_cli.tui.chat import ChatSession
+
+    folder = tmp_path / "45888"
+    folder.mkdir()
+    fake = _FakeClient(reply="done")
+    session = ChatSession(
+        ticket_id=45888,
+        folder=folder,
+        client_factory=lambda: fake,
+    )
+
+    async for _ in session.send("what is the status?"):
+        pass
+
+    events_path = folder / "events.jsonl"
+    assert events_path.exists(), "events.jsonl should be written after a turn"
+    lines = events_path.read_text().splitlines()
+    assert len(lines) >= 1
+    entry = json.loads(lines[0])
+    assert entry["surface"] == "chat"
+    assert entry["model"] == "claude-sonnet-4-6"
+
+
 async def test_last_user_turn_tracks_redacted_input(tmp_path):
     from noc_cli.tui.chat import ChatSession
 
