@@ -38,3 +38,4 @@ packages = ["noc_cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: spawns the stdio MCP server subprocess"]
