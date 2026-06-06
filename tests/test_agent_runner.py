@@ -285,3 +285,36 @@ def test_transcript_stashed_on_double_failure(tmp_path):
     content = transcripts[0].read_text(encoding="utf-8").strip()
     assert content
     assert "low-audio" in content
+
+
+def test_run_agent_passes_mcp_servers_and_allowed_tools(tmp_path):
+    import anyio
+
+    from noc_cli.config import Config
+    from noc_cli.memory import MemoryStore
+
+    folder = scaffold_ticket(tmp_path, 761)
+    store = MemoryStore(db_path=tmp_path / "m.db", memory_md_path=tmp_path / "MEMORY.md")
+    store.init()
+    config = Config(zendesk_subdomain="acme", zendesk_email="a@b.co", zendesk_api_token="tok")
+
+    captured = {}
+
+    async def fake_query(*, prompt, options):
+        captured["options"] = options
+        if False:
+            yield  # make this an async generator that yields nothing
+
+    anyio.run(
+        lambda: run_agent(
+            ticket_id=761, folder=folder, system_prompt="sys", history_context="",
+            config=config, memory_store=store, _query_fn=fake_query,
+        )
+    )
+    opts = captured["options"]
+    assert set(opts.mcp_servers) == {"zendesk", "history"}
+    for name in (
+        "mcp__zendesk__get_ticket", "mcp__zendesk__get_comments",
+        "mcp__zendesk__search", "mcp__history__search_history",
+    ):
+        assert name in opts.allowed_tools
