@@ -78,3 +78,10 @@ def test_process_env_beats_dotenv(tmp_path, monkeypatch):
 def test_unknown_surface_raises():
     with pytest.raises(KeyError):
         profile_for("nope")
+
+
+def test_grounding_profile_is_haiku():
+    p = profile_for("grounding")
+    assert p.model == "claude-haiku-4-5"
+    assert p.effort == "medium"
+    assert p.source == "default"
