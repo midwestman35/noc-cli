@@ -1,4 +1,5 @@
 """In-process investigate pipeline, callable from the CLI and the TUI worker."""
+
 from __future__ import annotations
 
 import os
@@ -192,8 +193,11 @@ async def run_investigation(
     consulted = consulted_runbook_slugs(transcript)
     warnings = validation_warnings(handoff, consulted, folder=folder)
     render_handoff(
-        handoff, folder, owner=owner,
-        consulted_runbooks=consulted, validator_warnings=warnings,
+        handoff,
+        folder,
+        owner=owner,
+        consulted_runbooks=consulted,
+        validator_warnings=warnings,
     )
     try:
         render_reasoning(transcript, handoff, folder)

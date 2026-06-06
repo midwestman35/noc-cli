@@ -23,7 +23,9 @@ DOMAIN_MAP: tuple[Symptom, ...] = (
     Symptom("[No ALI]", "no-ali", "SIP / UC", "Caller location missing (No ALI)"),
     Symptom("[low audio]", "low-audio", "Media", "Audio / media quality"),
     Symptom("[apex]", "apex", "Operator Client", "APEX / station-client behavior"),
-    Symptom("[event history]", "event-history", "Data", "Event history / analytics gap"),
+    Symptom(
+        "[event history]", "event-history", "Data", "Event history / analytics gap"
+    ),
 )
 
 # Approved symptom tag (normalized, no brackets/case) -> runbook slug.

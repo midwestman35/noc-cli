@@ -24,7 +24,11 @@ def minimal_handoff_dict(**overrides):
             "one_line_fingerprint": "Aurora / apex / Network Error / 06:30 UTC",
             "ticket_summary": ["Brief all-console network error"],
             "context_pulls": [
-                {"pull": "Last 3 tickets", "result": "none similar", "source": "Zendesk"}
+                {
+                    "pull": "Last 3 tickets",
+                    "result": "none similar",
+                    "source": "Zendesk",
+                }
             ],
             "initial_hypothesis": "Fork B (site network)",
             "intake_decision": "ready_for_evidence_preflight",
@@ -88,9 +92,14 @@ def test_minimal_handoff_parses_and_exposes_fields():
 
 def test_fork_letter_rejects_lowercase_and_unknown():
     with pytest.raises(ValidationError):
-        Handoff.model_validate(minimal_handoff_dict(
-            fork_packet={**minimal_handoff_dict()["fork_packet"], "fork_letter": "a"}
-        ))
+        Handoff.model_validate(
+            minimal_handoff_dict(
+                fork_packet={
+                    **minimal_handoff_dict()["fork_packet"],
+                    "fork_letter": "a",
+                }
+            )
+        )
 
 
 def test_symptom_tag_must_be_in_approved_set():

@@ -98,14 +98,22 @@ def test_search_before_init_swallows_operational_error(tmp_path):
 
 def test_investigated_at_auto_set_and_preserved():
     auto = InvestigationRecord(
-        ticket_id="1", symptom_tag="[apex]", fork_letter="A", confidence="High",
-        one_line_fingerprint="f", summary="s",
+        ticket_id="1",
+        symptom_tag="[apex]",
+        fork_letter="A",
+        confidence="High",
+        one_line_fingerprint="f",
+        summary="s",
     )
     assert auto.investigated_at  # auto-populated, non-empty
     assert "T" in auto.investigated_at and auto.investigated_at.endswith("+00:00")
     supplied = InvestigationRecord(
-        ticket_id="1", symptom_tag="[apex]", fork_letter="A", confidence="High",
-        one_line_fingerprint="f", summary="s",
+        ticket_id="1",
+        symptom_tag="[apex]",
+        fork_letter="A",
+        confidence="High",
+        one_line_fingerprint="f",
+        summary="s",
         investigated_at="2020-01-01T00:00:00+00:00",
     )
     assert supplied.investigated_at == "2020-01-01T00:00:00+00:00"
@@ -115,9 +123,13 @@ def test_related_zendesk_round_trips(store):
     append_investigation(
         store,
         InvestigationRecord(
-            ticket_id="77001", symptom_tag="[apex]", fork_letter="B", confidence="Medium",
+            ticket_id="77001",
+            symptom_tag="[apex]",
+            fork_letter="B",
+            confidence="Medium",
             one_line_fingerprint="round trip test apex",
-            summary="related zendesk round trip", related_zendesk=[41675, 99234],
+            summary="related zendesk round trip",
+            related_zendesk=[41675, 99234],
             rubric_version="2026-05-13",
         ),
     )

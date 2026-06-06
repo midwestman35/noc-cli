@@ -45,7 +45,11 @@ class MacOSNotifier(Notifier):
         self._terminal_notifier: str | None = shutil.which("terminal-notifier")
 
     def _title(self, event: ChangeEvent) -> str:
-        if event.customer_replied and event.old_status == "pending" and event.new_status == "open":
+        if (
+            event.customer_replied
+            and event.old_status == "pending"
+            and event.new_status == "open"
+        ):
             return "noc-cli · Customer replied"
         if event.kind == ChangeKind.STATUS_CHANGED:
             return f"noc-cli · Status changed ({event.old_status} → {event.new_status})"
@@ -61,10 +65,14 @@ class MacOSNotifier(Notifier):
             subprocess.run(
                 [
                     self._terminal_notifier,
-                    "-title", title,
-                    "-message", message,
-                    "-group", f"noc-cli-{event.ticket_id}",
-                    "-sound", "default",
+                    "-title",
+                    title,
+                    "-message",
+                    message,
+                    "-group",
+                    f"noc-cli-{event.ticket_id}",
+                    "-sound",
+                    "default",
                 ],
                 check=False,
             )

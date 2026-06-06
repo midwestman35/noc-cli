@@ -77,10 +77,20 @@ def test_run_scout_full_pipeline(tmp_path):
 
 def test_run_scout_counts_dropped_screens(tmp_path):
     tickets = [
-        Ticket(id=1, subject="a", status="open", priority="high",
-               updated_at=NOW - timedelta(days=8)),
-        Ticket(id=2, subject="b", status="open", priority="high",
-               updated_at=NOW - timedelta(days=9)),
+        Ticket(
+            id=1,
+            subject="a",
+            status="open",
+            priority="high",
+            updated_at=NOW - timedelta(days=8),
+        ),
+        Ticket(
+            id=2,
+            subject="b",
+            status="open",
+            priority="high",
+            updated_at=NOW - timedelta(days=9),
+        ),
     ]
 
     def query_fn(*, prompt, options):

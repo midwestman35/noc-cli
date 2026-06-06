@@ -168,7 +168,9 @@ def render_summary(summary: InboxSummary, *, shipped_version: str | None) -> str
     lines: list[str] = []
 
     if summary.rubric_version != shipped_version:
-        lines.append(f"⚠ Rubric version mismatch: state={state_version}, shipped={shipped}")
+        lines.append(
+            f"⚠ Rubric version mismatch: state={state_version}, shipped={shipped}"
+        )
         lines.append("")
 
     lines.extend(
@@ -262,7 +264,9 @@ def render_comments(ticket: Ticket, *, tz: str = "local") -> Text:
             if comment.author_id is not None
             else "author unknown"
         )
-        header = f"[{role}] {_format_timestamp(comment.created_at, display_tz)} {author}:"
+        header = (
+            f"[{role}] {_format_timestamp(comment.created_at, display_tz)} {author}:"
+        )
         body = _truncate_block(comment.body)
         text.append(f"{header}\n{body}\n", style=style)
 

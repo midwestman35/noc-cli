@@ -18,9 +18,9 @@ ALLOWED_TOOLS = [
     "Glob",
     "Grep",
     "LS",
-    "Write",   # sandbox-scoped by harness
-    "Edit",    # sandbox-scoped by harness
-    "Bash",    # read-only patterns enforced by harness
+    "Write",  # sandbox-scoped by harness
+    "Edit",  # sandbox-scoped by harness
+    "Bash",  # read-only patterns enforced by harness
     # NOTE: live history-search + read-only Zendesk SDK MCP tools (agent/tools.py)
     # are DEFERRED to a follow-on plan. The agent operates on the pre-seeded
     # history written to the ticket folder (Task 10) + the sandbox file tools above.
@@ -101,7 +101,9 @@ def _raw_tool_args(tool_input: dict) -> str:
         return str(tool_input)
 
 
-def _stash_transcript(folder: TicketFolder, transcript: list[TranscriptEntry]) -> Path | None:
+def _stash_transcript(
+    folder: TicketFolder, transcript: list[TranscriptEntry]
+) -> Path | None:
     if not transcript:
         return None
     stash_dir = folder.root / ".debug"
@@ -209,7 +211,9 @@ async def run_agent(
             "starting point, not a verdict; re-steer if evidence does not correlate.\n\n"
         )
     else:
-        hypothesis_line = "No analyst hypothesis was provided — infer the symptom from intake.\n\n"
+        hypothesis_line = (
+            "No analyst hypothesis was provided — infer the symptom from intake.\n\n"
+        )
 
     full_prompt = (
         f"Triage ticket #{ticket_id}.\n\n"
@@ -229,7 +233,9 @@ async def run_agent(
     handoff = _try_parse(raw1)
     if handoff is not None:
         _stash_transcript(folder, transcript1)
-        return RunnerResult(handoff=handoff, raw_result=raw1, attempts=1, transcript=transcript1)
+        return RunnerResult(
+            handoff=handoff, raw_result=raw1, attempts=1, transcript=transcript1
+        )
 
     # Attempt 2 — correction prompt
     correction_prompt = (
@@ -243,7 +249,9 @@ async def run_agent(
     combined = transcript1 + transcript2
     if handoff2 is not None:
         _stash_transcript(folder, combined)
-        return RunnerResult(handoff=handoff2, raw_result=raw2, attempts=2, transcript=combined)
+        return RunnerResult(
+            handoff=handoff2, raw_result=raw2, attempts=2, transcript=combined
+        )
 
     # Double failure — stash and abort
     stash_dir = folder.root / ".debug"

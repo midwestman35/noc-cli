@@ -22,7 +22,11 @@ class ZendeskClient:
     """Read-only Zendesk API v2 client. Performs no writes, ever."""
 
     def __init__(self, config: Config, client: httpx.Client | None = None) -> None:
-        if not (config.zendesk_subdomain and config.zendesk_email and config.zendesk_api_token):
+        if not (
+            config.zendesk_subdomain
+            and config.zendesk_email
+            and config.zendesk_api_token
+        ):
             raise ZendeskError(
                 "Zendesk is not configured. Run `noc-cli setup` to set "
                 "ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, and ZENDESK_API_TOKEN."

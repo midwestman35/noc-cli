@@ -9,6 +9,7 @@ agent's (correct) "no evidence" reply. See the two layers:
   2. agent → parse: the runner must tolerate prose-wrapped JSON and the
      schema must tolerate the shapes the model actually emits.
 """
+
 import json
 from pathlib import Path
 
@@ -156,7 +157,9 @@ def test_write_ticket_source_writes_redactable_markdown(tmp_path):
 # ── Capstone: the whole investigate path lands evidence + renders ───────────
 
 
-def test_investigate_persists_ticket_and_attachments_into_sandbox(tmp_path, monkeypatch):
+def test_investigate_persists_ticket_and_attachments_into_sandbox(
+    tmp_path, monkeypatch
+):
     """The real (non-fixture) path must land ticket body + attachments in the
     sandbox and then render. This is the regression that the mocked suite missed."""
     from noc_cli.agent.runner import RunnerResult as _RR  # noqa: F811

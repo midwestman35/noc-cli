@@ -252,18 +252,22 @@ def test_render_comments_orders_oldest_first_with_role_labels_and_12h_timestamps
 
     assert plain.startswith("Latest comments:")
     # Oldest at top, newest at bottom.
-    assert plain.index("[older body]") < plain.index("[middle body]") < plain.index("[newer body]")
+    assert (
+        plain.index("[older body]")
+        < plain.index("[middle body]")
+        < plain.index("[newer body]")
+    )
     # Role labels keyed off public / requester_id.
     assert "[customer]" in plain  # requester, public
-    assert "[agent]" in plain     # other author, public
+    assert "[agent]" in plain  # other author, public
     assert "[internal]" in plain  # not public
     # 12-hour clock, no leading zero, no 24-hour leak.
     assert "1:30 PM" in plain and "13:30" not in plain
     # Role styles are carried on the Text spans.
     styles = {str(span.style) for span in rendered.spans}
-    assert "blue" in styles                       # customer
-    assert "white" in styles                      # agent
-    assert "black on rgb(181,137,0)" in styles    # internal note
+    assert "blue" in styles  # customer
+    assert "white" in styles  # agent
+    assert "black on rgb(181,137,0)" in styles  # internal note
 
 
 def test_render_comments_handles_empty_thread():

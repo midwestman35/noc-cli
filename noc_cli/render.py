@@ -45,7 +45,9 @@ def _render_intake(intake: IntakeBlock) -> str:
     if intake.region:
         lines.append(f"**Region:** {intake.region}")
     lines += [
-        f"**Incident window:** {intake.incident_window}" if intake.incident_window else "",
+        f"**Incident window:** {intake.incident_window}"
+        if intake.incident_window
+        else "",
         "",
         f"**Fingerprint:** {intake.one_line_fingerprint}",
         "",
@@ -140,7 +142,10 @@ def _render_fork_packet(fp: ForkPacket) -> str:
             ]
 
     if fp.related_zendesk:
-        lines += ["", f"**Related Zendesk:** {', '.join(f'#{z}' for z in fp.related_zendesk)}"]
+        lines += [
+            "",
+            f"**Related Zendesk:** {', '.join(f'#{z}' for z in fp.related_zendesk)}",
+        ]
     if fp.related_jira:
         lines += [f"**Related Jira:** {', '.join(fp.related_jira)}"]
 
@@ -262,7 +267,9 @@ def render_handoff(
         "EVIDENCE_PREFLIGHT.md": _render_preflight(handoff.evidence_preflight),
         "FORK_PACKET.md": _render_fork_packet(handoff.fork_packet),
         "DRAFTS.md": _render_drafts(handoff.drafts),
-        "STATE.md": _render_state(handoff, owner, consulted_runbooks, validator_warnings),
+        "STATE.md": _render_state(
+            handoff, owner, consulted_runbooks, validator_warnings
+        ),
     }
 
     with tempfile.TemporaryDirectory(dir=dest, prefix=".render-tmp-") as td:
@@ -316,7 +323,11 @@ def _pivoted(handoff: Handoff, consulted: list[str]) -> bool:
         return True
     text = " ".join(
         part
-        for part in (handoff.intake.initial_hypothesis, fp.reasoning, fp.runbook_reference.section)
+        for part in (
+            handoff.intake.initial_hypothesis,
+            fp.reasoning,
+            fp.runbook_reference.section,
+        )
         if part
     ).lower()
     pivot_terms = ("pivot", "re-steer", "reclassified", "ruled out", "leaving")
@@ -363,7 +374,9 @@ def render_reasoning(
         fp = handoff.fork_packet
         ticket = handoff.intake.ticket_id
         hypothesis = handoff.intake.initial_hypothesis or "(none)"
-        final = f"Fork {fp.fork_letter.value} - {fp.symptom_tag} - {fp.confidence.value}"
+        final = (
+            f"Fork {fp.fork_letter.value} - {fp.symptom_tag} - {fp.confidence.value}"
+        )
         pivoted = _pivoted(handoff, consulted)
     else:
         ticket = folder.root.name
@@ -371,7 +384,9 @@ def render_reasoning(
         final = "(no handoff - agent output was unparseable)"
         pivoted = False
 
-    turns = sum(1 for entry in transcript if getattr(entry, "kind", "") in {"reasoning", "tool"})
+    turns = sum(
+        1 for entry in transcript if getattr(entry, "kind", "") in {"reasoning", "tool"}
+    )
     lines = [
         f"# REASONING - Ticket #{ticket}",
         "",

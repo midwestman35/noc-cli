@@ -20,6 +20,7 @@ SCREEN_SYSTEM_PROMPT = (
     "review."
 )
 
+
 def _parse(raw: str, ticket_id: int) -> ScreenReport | None:
     try:
         data = json.loads(extract_json(raw))

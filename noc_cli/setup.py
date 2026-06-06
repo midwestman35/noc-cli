@@ -6,6 +6,7 @@ side-effecting operations (prompt function, destination path) as
 arguments so it can be driven in tests without real stdin and with
 writes redirected to a temp path rather than the real home directory.
 """
+
 from __future__ import annotations
 
 import os

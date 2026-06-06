@@ -30,7 +30,14 @@ def test_missing_config_raises():
 def test_get_ticket_uses_token_auth_and_parses(httpx_mock, http):
     httpx_mock.add_response(
         url="https://carbyne.zendesk.com/api/v2/tickets/18432.json",
-        json={"ticket": {"id": 18432, "subject": "No ANI", "status": "open", "tags": ["apex"]}},
+        json={
+            "ticket": {
+                "id": 18432,
+                "subject": "No ANI",
+                "status": "open",
+                "tags": ["apex"],
+            }
+        },
     )
     client = ZendeskClient(make_config(), client=http)
     ticket = client.get_ticket(18432)
@@ -51,10 +58,12 @@ def test_auth_failure_raises_friendly_error(httpx_mock, http):
 def test_search_filters_to_tickets(httpx_mock, http):
     httpx_mock.add_response(
         url="https://carbyne.zendesk.com/api/v2/search.json?query=foo",
-        json={"results": [
-            {"id": 1, "result_type": "ticket", "subject": "a"},
-            {"id": 2, "result_type": "user"},
-        ]},
+        json={
+            "results": [
+                {"id": 1, "result_type": "ticket", "subject": "a"},
+                {"id": 2, "result_type": "user"},
+            ]
+        },
     )
     client = ZendeskClient(make_config(), client=http)
     results = client.search("foo")

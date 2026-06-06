@@ -36,8 +36,10 @@ def test_noop_notifier_does_not_raise():
 
 
 def test_macos_notifier_uses_osascript_when_terminal_notifier_absent():
-    with patch("shutil.which", return_value=None) as mock_which, \
-         patch("subprocess.run") as mock_run:
+    with (
+        patch("shutil.which", return_value=None) as mock_which,
+        patch("subprocess.run") as mock_run,
+    ):
         mock_run.return_value = MagicMock(returncode=0)
         notifier = MacOSNotifier()
         notifier.notify(_evt())
@@ -51,8 +53,7 @@ def test_macos_notifier_uses_osascript_when_terminal_notifier_absent():
 
 
 def test_macos_notifier_customer_replied_title_contains_flag():
-    with patch("shutil.which", return_value=None), \
-         patch("subprocess.run") as mock_run:
+    with patch("shutil.which", return_value=None), patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         notifier = MacOSNotifier()
         evt = _evt(customer_replied=True, old_status="pending", new_status="open")
@@ -63,8 +64,10 @@ def test_macos_notifier_customer_replied_title_contains_flag():
 
 def test_macos_notifier_uses_terminal_notifier_when_present():
     tn_path = "/usr/local/bin/terminal-notifier"
-    with patch("shutil.which", return_value=tn_path) as mock_which, \
-         patch("subprocess.run") as mock_run:
+    with (
+        patch("shutil.which", return_value=tn_path) as mock_which,
+        patch("subprocess.run") as mock_run,
+    ):
         mock_run.return_value = MagicMock(returncode=0)
         notifier = MacOSNotifier()
         notifier.notify(_evt())
@@ -76,8 +79,10 @@ def test_macos_notifier_uses_terminal_notifier_when_present():
 
 def test_macos_notifier_terminal_notifier_passes_title_and_message():
     tn_path = "/usr/local/bin/terminal-notifier"
-    with patch("shutil.which", return_value=tn_path), \
-         patch("subprocess.run") as mock_run:
+    with (
+        patch("shutil.which", return_value=tn_path),
+        patch("subprocess.run") as mock_run,
+    ):
         mock_run.return_value = MagicMock(returncode=0)
         notifier = MacOSNotifier()
         notifier.notify(_evt(tid=42, subject="No ALI on site 7"))
@@ -97,8 +102,10 @@ def test_build_notifier_returns_macos_when_ping_in_notify_string():
 
     if platform.system() != "Darwin":
         pytest.skip("MacOSNotifier only on macOS")
-    with patch("shutil.which", return_value=None), \
-         patch("subprocess.run", return_value=MagicMock(returncode=0)):
+    with (
+        patch("shutil.which", return_value=None),
+        patch("subprocess.run", return_value=MagicMock(returncode=0)),
+    ):
         n = build_notifier(notify_cfg="banner,ping")
         assert isinstance(n, MacOSNotifier)
 
@@ -115,8 +122,10 @@ class _SyncThread:
 
 
 def test_openpets_notifier_says_message_with_reaction():
-    with patch("noc_cli.watch.notify.threading.Thread", _SyncThread), \
-         patch("noc_cli.watch.openpets.say") as mock_say:
+    with (
+        patch("noc_cli.watch.notify.threading.Thread", _SyncThread),
+        patch("noc_cli.watch.openpets.say") as mock_say,
+    ):
         OpenPetsNotifier().notify(
             _evt(tid=42, customer_replied=True, old_status="pending", new_status="open")
         )
@@ -127,19 +136,28 @@ def test_openpets_notifier_says_message_with_reaction():
 
 
 def test_openpets_notifier_status_change_message():
-    with patch("noc_cli.watch.notify.threading.Thread", _SyncThread), \
-         patch("noc_cli.watch.openpets.say") as mock_say:
+    with (
+        patch("noc_cli.watch.notify.threading.Thread", _SyncThread),
+        patch("noc_cli.watch.openpets.say") as mock_say,
+    ):
         OpenPetsNotifier().notify(
-            _evt(tid=7, kind=ChangeKind.STATUS_CHANGED, customer_replied=False,
-                 old_status="open", new_status="solved")
+            _evt(
+                tid=7,
+                kind=ChangeKind.STATUS_CHANGED,
+                customer_replied=False,
+                old_status="open",
+                new_status="solved",
+            )
         )
         msg = mock_say.call_args[0][0]
         assert "ZD-7" in msg and "open" in msg and "solved" in msg
 
 
 def test_openpets_notifier_swallows_errors():
-    with patch("noc_cli.watch.notify.threading.Thread", _SyncThread), \
-         patch("noc_cli.watch.openpets.say", side_effect=Exception("pet down")):
+    with (
+        patch("noc_cli.watch.notify.threading.Thread", _SyncThread),
+        patch("noc_cli.watch.openpets.say", side_effect=Exception("pet down")),
+    ):
         OpenPetsNotifier().notify(_evt())  # must not raise
 
 
@@ -148,8 +166,10 @@ def test_build_notifier_openpets_token_returns_openpets_notifier():
 
 
 def test_build_notifier_composes_ping_and_openpets_on_macos():
-    with patch("noc_cli.watch.notify.platform.system", return_value="Darwin"), \
-         patch("shutil.which", return_value=None):
+    with (
+        patch("noc_cli.watch.notify.platform.system", return_value="Darwin"),
+        patch("shutil.which", return_value=None),
+    ):
         assert isinstance(build_notifier("ping,openpets"), CompositeNotifier)
 
 

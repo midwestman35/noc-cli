@@ -5,6 +5,7 @@ Each `check_*` function returns a `CheckResult(ok, label, message)`.
 All external dependencies (shutil.which, ZendeskClient construction) are
 importable at the module level or injected so tests can monkeypatch cleanly.
 """
+
 from __future__ import annotations
 
 import os

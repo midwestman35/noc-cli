@@ -3,6 +3,7 @@
 Mirrors agent/runner.py: the SDK client is built by an injectable factory so
 tests pass a fake; production lazily builds a real ClaudeSDKClient.
 """
+
 from __future__ import annotations
 
 import json
@@ -98,7 +99,9 @@ class ChatSession:
         for turn in self._turns:
             who = "You" if turn.role == "you" else "Agent"
             lines += [f"**{who}** · {turn.ts}", "", turn.text, ""]
-        (self._folder / "CONVERSATION.md").write_text("\n".join(lines), encoding="utf-8")
+        (self._folder / "CONVERSATION.md").write_text(
+            "\n".join(lines), encoding="utf-8"
+        )
 
 
 def _now() -> str:

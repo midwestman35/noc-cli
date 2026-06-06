@@ -30,7 +30,9 @@ def test_save_and_load_roundtrips_a_snapshot(conn):
 def test_update_overwrites_previous_snapshot(conn):
     ws = WatchState(conn)
     ws.save(101, TicketSnapshot(status="open", last_comment_at="2026-06-01T10:00:00Z"))
-    ws.save(101, TicketSnapshot(status="pending", last_comment_at="2026-06-02T09:00:00Z"))
+    ws.save(
+        101, TicketSnapshot(status="pending", last_comment_at="2026-06-02T09:00:00Z")
+    )
     loaded = ws.load_all()
     assert loaded[101].status == "pending"
     assert loaded[101].last_comment_at == "2026-06-02T09:00:00Z"
@@ -49,7 +51,9 @@ def test_state_persists_across_reconnect(tmp_path):
     db = tmp_path / "noc.db"
     conn1 = store.connect(db)
     ws1 = WatchState(conn1)
-    ws1.save(42, TicketSnapshot(status="solved", last_comment_at="2026-06-03T00:00:00Z"))
+    ws1.save(
+        42, TicketSnapshot(status="solved", last_comment_at="2026-06-03T00:00:00Z")
+    )
     conn1.close()
 
     conn2 = store.connect(db)
@@ -63,7 +67,9 @@ def test_seed_inserts_if_absent_and_is_idempotent(conn):
     ws = WatchState(conn)
     snap = TicketSnapshot(status="open", last_comment_at="2026-06-01T00:00:00Z")
     ws.seed_if_absent(99, snap)
-    ws.seed_if_absent(99, TicketSnapshot(status="pending", last_comment_at="2026-06-02T00:00:00Z"))
+    ws.seed_if_absent(
+        99, TicketSnapshot(status="pending", last_comment_at="2026-06-02T00:00:00Z")
+    )
     loaded = ws.load_all()
     # The first seed wins; the second call is a no-op.
     assert loaded[99].status == "open"

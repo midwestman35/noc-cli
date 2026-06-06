@@ -69,8 +69,11 @@ def test_run_agent_parses_good_handoff(tmp_path):
     fake_q = _make_fake_query(_load_fixture("handoff_good.json"))
     result = _run(
         run_agent(
-            ticket_id=18432, folder=folder, system_prompt="test",
-            history_context="", _query_fn=fake_q,
+            ticket_id=18432,
+            folder=folder,
+            system_prompt="test",
+            history_context="",
+            _query_fn=fake_q,
         )
     )
     assert isinstance(result, RunnerResult)
@@ -85,8 +88,11 @@ def test_run_agent_parses_inconclusive_handoff(tmp_path):
     fake_q = _make_fake_query(_load_fixture("handoff_inconclusive.json"))
     result = _run(
         run_agent(
-            ticket_id=18433, folder=folder, system_prompt="test",
-            history_context="", _query_fn=fake_q,
+            ticket_id=18433,
+            folder=folder,
+            system_prompt="test",
+            history_context="",
+            _query_fn=fake_q,
         )
     )
     assert result.handoff is not None
@@ -98,8 +104,11 @@ def test_run_agent_retries_on_bad_json_then_stashes(tmp_path):
     fake_q = _make_fake_query(_load_fixture("handoff_bad.json"))
     result = _run(
         run_agent(
-            ticket_id=18434, folder=folder, system_prompt="test",
-            history_context="", _query_fn=fake_q,
+            ticket_id=18434,
+            folder=folder,
+            system_prompt="test",
+            history_context="",
+            _query_fn=fake_q,
         )
     )
     assert result.handoff is None
@@ -117,8 +126,11 @@ def test_stash_written_to_debug_subdir(tmp_path):
     fake_q = _make_fake_query('{"totally": "wrong"}')
     result = _run(
         run_agent(
-            ticket_id=18435, folder=folder, system_prompt="test",
-            history_context="", _query_fn=fake_q,
+            ticket_id=18435,
+            folder=folder,
+            system_prompt="test",
+            history_context="",
+            _query_fn=fake_q,
         )
     )
     assert result.stash_path is not None
@@ -140,8 +152,11 @@ def test_retry_uses_correction_prompt(tmp_path):
 
     result = _run(
         run_agent(
-            ticket_id=18436, folder=folder, system_prompt="test",
-            history_context="", _query_fn=capturing_query,
+            ticket_id=18436,
+            folder=folder,
+            system_prompt="test",
+            history_context="",
+            _query_fn=capturing_query,
         )
     )
     assert result.handoff is None
@@ -172,7 +187,9 @@ def test_run_agent_captures_transcript(tmp_path):
     tool = next(entry for entry in result.transcript if entry.kind == "tool")
     assert tool.tool_name == "Read"
     assert "low-audio" in tool.tool_args
-    tool_result = next(entry for entry in result.transcript if entry.kind == "tool_result")
+    tool_result = next(
+        entry for entry in result.transcript if entry.kind == "tool_result"
+    )
     assert "low-audio runbook content" in tool_result.text
     assert len(tool_result.text) <= 1000
 

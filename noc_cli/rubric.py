@@ -34,8 +34,10 @@ def _extract_core(text: str) -> str:
 
 
 def _read_rubric_text() -> str:
-    return resources.files("noc_cli.data").joinpath("fork-rubric.md").read_text(
-        encoding="utf-8"
+    return (
+        resources.files("noc_cli.data")
+        .joinpath("fork-rubric.md")
+        .read_text(encoding="utf-8")
     )
 
 
