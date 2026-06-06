@@ -1157,6 +1157,43 @@ class WatchApp(App[None]):
         self._scout_error = msg
         self._refresh_detail()
 
+    def action_take(self, arg: str) -> None:
+        raw = arg.strip()
+        if not raw.isdigit():
+            self._set_notification("Usage: /take <ticket id>")
+            return
+        if self._pending_take is not None:
+            self._set_notification("A take is already awaiting confirmation.")
+            return
+        self._run_take_proposal(int(raw))
+
+    @work(thread=True, exclusive=False)
+    def _run_take_proposal(self, tid: int) -> None:
+        from noc_cli.scout import commands
+
+        reason = commands.preflight_current_ticket(
+            self._config, ticket_id=tid, min_staleness_days=7
+        )
+        if reason is not None:
+            self.app.call_from_thread(
+                self._set_notification, f"Can't take #{tid}: {reason}"
+            )
+            return
+        owner_id = commands.resolve_owner_id(self._config)
+        if owner_id is None:
+            self.app.call_from_thread(
+                self._set_notification,
+                "Could not resolve your Zendesk user id — set NOC_OWNER / "
+                "NOC_WATCH_ASSIGNEE.",
+            )
+            return
+        self.app.call_from_thread(self._take_proposed, tid, owner_id)
+
+    def _take_proposed(self, tid: int, owner_id: int) -> None:
+        self._pending_take = tid
+        self._pending_take_owner = owner_id
+        self._refresh_detail()
+
     def _render_scout_panel(self) -> str:
         if self._scouting:
             return f"{_BRAILLE[self._spinner_frame]} Scouting the Tier-1 backlog …"
@@ -1166,11 +1203,32 @@ class WatchApp(App[None]):
                 "Type /scout to retry, or check the terminal for details."
             )
         if self._scout_report is None:
-            return "No scout report yet."
+            lines = ["No scout report yet."]
+            if self._pending_take is not None:
+                lines.extend(
+                    [
+                        "",
+                        (
+                            f"Assign #{self._pending_take} to you and investigate? "
+                            "Press Enter to confirm · Esc to cancel"
+                        ),
+                    ]
+                )
+            return "\n".join(lines)
 
         from noc_cli.scout.render import render_scout_report
 
         lines = [render_scout_report(self._scout_report)]
+        if self._pending_take is not None:
+            lines.extend(
+                [
+                    "",
+                    (
+                        f"Assign #{self._pending_take} to you and investigate? "
+                        "Press Enter to confirm · Esc to cancel"
+                    ),
+                ]
+            )
         if self._scout_report.dropped > 0:
             lines.extend(
                 [
@@ -1329,6 +1387,8 @@ class WatchApp(App[None]):
             self._run_doctor()
         elif name == "scout":
             self.action_scout()
+        elif name == "take":
+            self.action_take(parsed.args)
         elif name == "file":
             self._attach_file(parsed.args)
         elif name == "paste":
