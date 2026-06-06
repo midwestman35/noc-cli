@@ -826,3 +826,45 @@ async def test_autocomplete_hidden_on_space_and_no_match(db_conn, tmp_path):
         await pilot.pause()
         assert app._ac_open is False
         assert panel.display is False
+
+
+async def test_arrows_move_highlight_not_ticket_cursor(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    from noc_cli.tui.watch_app import TicketList
+
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(1), _ticket(2)]]),
+        WatchState(db_conn),
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        ticket_list = app.query_one("#ticket-list", TicketList)
+        cursor_before = ticket_list.cursor_index
+        box = app.query_one("#command", Input)
+        box.value = "/"  # all commands => more than one match
+        await pilot.pause()
+        assert app._ac_index == 0
+        await pilot.press("down")
+        await pilot.pause()
+        assert app._ac_index == 1
+        await pilot.press("up")
+        await pilot.pause()
+        assert app._ac_index == 0
+        assert ticket_list.cursor_index == cursor_before
+
+
+async def test_arrows_navigate_tickets_when_menu_closed(db_conn, tmp_path):
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(1), _ticket(2)]]),
+        WatchState(db_conn),
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        assert app._ac_open is False
+        before = app.selected_row.ticket_id
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.selected_row.ticket_id != before

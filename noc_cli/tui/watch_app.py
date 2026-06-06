@@ -545,6 +545,12 @@ class WatchApp(App[None]):
         self._ac_matches = []
         self._render_autocomplete()
 
+    def _ac_move(self, delta: int) -> None:
+        if not self._ac_matches:
+            return
+        self._ac_index = max(0, min(self._ac_index + delta, len(self._ac_matches) - 1))
+        self._render_autocomplete()
+
     def _tick_spinner(self) -> None:
         busy = (
             self._polling
@@ -912,6 +918,9 @@ class WatchApp(App[None]):
         self._banner_timer = self.set_timer(4.0, self._clear_notification)
 
     def action_cursor_up(self) -> None:
+        if self._ac_open:
+            self._ac_move(-1)
+            return
         moved = self.query_one("#ticket-list", TicketList).move_up()
         if moved:
             self._detail_index = 0
@@ -919,6 +928,9 @@ class WatchApp(App[None]):
             self._refresh_detail()
 
     def action_cursor_down(self) -> None:
+        if self._ac_open:
+            self._ac_move(1)
+            return
         moved = self.query_one("#ticket-list", TicketList).move_down()
         if moved:
             self._detail_index = 0
