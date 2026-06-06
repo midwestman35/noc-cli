@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noc-cli"
-version = "0.5.0"
+version = "0.6.0"
 description = "Read-only NOC triage assistant for Carbyne APEX NG911/E911 (Python / Claude Agent SDK)."
 requires-python = ">=3.10"
 dependencies = [

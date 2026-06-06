@@ -7,9 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Interactive TUI shell restructure (in progress). The bare `noc-cli` command will
-launch a persistent TUI; `investigate`, `watch`, and `scout` become hidden,
-deprecated aliases that warn and delegate. Entry to be finalized when the work lands.
+## [0.6.0] - 2026-06-06
+
+The runtime triage agent gains live data, model tuning, and reliable runbook
+grounding; the TUI gains a command palette and an in-app Backlog Scout.
+
+### Added
+- **Live read-only agent tools** (#9): during an investigation the agent can
+  fetch a ticket and its comments and search Zendesk + prior investigations on
+  demand — via an external read-only Zendesk MCP server (FastMCP, PII-redacted
+  at the trust boundary) and an in-process history server.
+- **Deeper runbook grounding** (#12): a Haiku classifier selects the runbook
+  from the ticket evidence (the operator hypothesis is a signal, not a verdict),
+  injects it into the agent's prompt, and softly verifies the fork cites it —
+  surfaced as `grounding_verified` on the Handoff, in `events.jsonl`, and in the
+  rendered output.
+- **Model selection + usage observability** (#10): a centralized model registry
+  (investigate→Opus with Sonnet fallback, chat→Sonnet, Scout→Haiku/Opus) with
+  per-surface `NOC_MODEL_<SURFACE>` overrides, plus best-effort usage/cache-token
+  logging to the event log.
+- **Slash-command autocomplete palette** (#8) for the command box.
+- **In-TUI Backlog Scout panel** (#11): `/scout` runs the report and `/take`
+  claims a candidate and auto-investigates it.
+
+### Changed
+- Adopted **ruff** (format + lint) with a format-on-edit hook and a
+  protected-path edit guardrail (#7).
+
+### Internal
+- Test suite hardened to stay fully offline — no accidental live-model calls (#13).
 
 ## [0.5.0] - 2026-06-05
 
