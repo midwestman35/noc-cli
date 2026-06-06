@@ -63,9 +63,11 @@ async def synthesize(
         return ScoutReport(generated_at=now, ranked=[])
 
     if options_factory is None:
-        options_factory = lambda: build_options(
-            SYNTHESIS, system_prompt=SYNTHESIS_SYSTEM_PROMPT, cwd=cwd
-        )
+
+        def options_factory():
+            return build_options(
+                SYNTHESIS, system_prompt=SYNTHESIS_SYSTEM_PROMPT, cwd=cwd
+            )
 
     payload = json.dumps([report.model_dump() for report in reports], indent=2)
     prompt = (
