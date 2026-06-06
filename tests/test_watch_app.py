@@ -1086,3 +1086,69 @@ async def test_scout_engine_error_shows_in_panel(db_conn, tmp_path):
             await pilot.pause()
     assert "Scout failed" in app.current_detail_text
     assert "auth failed" in app.current_detail_text
+
+
+async def test_take_eligible_proposes_confirmation(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._scout_active = True
+        with patch(
+            "noc_cli.scout.commands.preflight_current_ticket", return_value=None
+        ), patch("noc_cli.scout.commands.resolve_owner_id", return_value=7):
+            box = app.query_one("#command", Input)
+            box.value = "/take 5012"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+    assert app._pending_take == 5012
+    assert app._pending_take_owner == 7
+    assert "Assign #5012" in app.current_detail_text
+
+
+async def test_take_ineligible_notifies_and_does_not_propose(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch(
+            "noc_cli.scout.commands.preflight_current_ticket",
+            return_value="already assigned",
+        ), patch("noc_cli.scout.commands.resolve_owner_id") as owner:
+            box = app.query_one("#command", Input)
+            box.value = "/take 5012"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        owner.assert_not_called()
+        notification_text = app.query_one("#notification").content
+    assert app._pending_take is None
+    assert "already assigned" in notification_text
+
+
+async def test_take_unresolved_owner_notifies(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch(
+            "noc_cli.scout.commands.preflight_current_ticket", return_value=None
+        ), patch("noc_cli.scout.commands.resolve_owner_id", return_value=None):
+            box = app.query_one("#command", Input)
+            box.value = "/take 5012"
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        notification_text = app.query_one("#notification").content
+    assert app._pending_take is None
+    assert "Zendesk user id" in notification_text
