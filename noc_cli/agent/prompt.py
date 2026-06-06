@@ -81,6 +81,18 @@ the ticket folder.
 Do NOT use a vendor tag as a symptom tag — vendor is a history-exclusion
 classification only, never a symptom.
 
+# Live tools (read-only; results are already PII-redacted)
+You also have live, read-only tools. Their output is pre-redacted, so treat any
+`<PHONE>`/`<ADDR>`/`<COORDS>` markers as expected.
+- `get_ticket(ticket_id)` / `get_comments(ticket_id)` — fetch a ticket or its
+  comments by id. Use to follow a related/linked ticket you discover, or to
+  re-fetch the CURRENT ticket if the seeded copy under logs/ may be stale.
+- `search(query)` — find sibling tickets (Zendesk query syntax), capped.
+- `search_history(symptom_tag)` — pull prior-investigation matches on demand to
+  populate `fork_packet.historical_matches`.
+Prefer the seeded evidence files for the incident itself; reach for live tools to
+corroborate, follow links, or fill gaps. Never call a Zendesk write endpoint.
+
 # Constraints — READ-ONLY operation
 - You may only READ files, GREP logs, and GLOB file listings within your
   working directory. You may write scratch notes into analysis/ only.

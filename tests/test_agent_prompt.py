@@ -1,4 +1,13 @@
 from noc_cli.agent.prompt import APPROVED_TAGS_IN_PROMPT, SYSTEM_PROMPT, build_system_prompt
+
+
+def test_system_prompt_documents_live_tools():
+    sp = build_system_prompt("## Symptom Class\nx")
+    assert "Live tools" in sp
+    for token in ("get_ticket", "get_comments", "search", "search_history"):
+        assert token in sp
+    # reinforces that live output is already redacted
+    assert "redacted" in sp.lower()
 from noc_cli.rubric import load_rubric
 from noc_cli.runbooks import RUNBOOK_SLUGS
 
