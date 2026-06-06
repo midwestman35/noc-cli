@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Checking protected paths…",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.env.example|*.env.sample|*.env.template) ;; *.env|*/.env|*/.env.*|*.env.*|*/Tickets/*|*/.remember/*|*settings.local.json|*.db|*.sqlite|*.sqlite3) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Protected path per AGENTS.md: .env / Tickets / .remember / settings.local.json / SQLite databases are off-limits to edits.\"}}' ;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}
