@@ -81,3 +81,23 @@ def test_fetch_comments_redacts_body_and_excludes_author_id():
     assert "<COORDS>" in out["comments"][0]["body"]
     assert "author_id" not in out["comments"][0]
     assert out["count"] == 1
+
+
+from noc_cli.mcp.zendesk_server import search_tickets, SEARCH_CAP
+
+
+class _FakeSearchClient:
+    def __init__(self, tickets):
+        self._tickets = tickets
+
+    def search(self, query):
+        return self._tickets
+
+
+def test_search_caps_results_and_redacts_subjects():
+    tickets = [_ticket(id=i, subject="37.7749, -122.4194") for i in range(SEARCH_CAP + 5)]
+    out = search_tickets(_FakeSearchClient(tickets), "apex")
+    assert out["count"] == SEARCH_CAP
+    assert len(out["results"]) == SEARCH_CAP
+    assert "<COORDS>" in out["results"][0]["subject"]
+    assert set(out["results"][0].keys()) == {"id", "subject", "status", "tags"}
