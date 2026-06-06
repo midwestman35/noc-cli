@@ -1120,10 +1120,58 @@ class WatchApp(App[None]):
             # PR #6 shipped the engine as the (now hidden/deprecated) CLI command;
             # an in-TUI Scout panel is a future task.
             self._set_notification("Scout runs from the CLI for now: `noc-cli scout`")
-        elif name in ("file", "paste", "revise", "retry"):
-            self._set_notification(f"/{name} works once chat lands (a later task).")
+        elif name == "file":
+            self._attach_file(parsed.args)
+        elif name == "paste":
+            self._attach_paste(parsed.args)
+        elif name == "revise":
+            self.action_investigate()  # re-runs the structured pipeline
+        elif name == "retry":
+            self._chat_retry()
         else:
             self._set_notification(f"Unknown command /{name}; try /help")
+
+    def _attach_file(self, path_arg: str) -> None:
+        row = self.selected_row
+        if row is None or not path_arg.strip():
+            self._set_notification("Usage: /file <path> (with a ticket selected)")
+            return
+        from noc_cli.evidence import gather_evidence
+        from noc_cli.scaffold import scaffold_ticket
+
+        src = Path(path_arg.strip()).expanduser()
+        if not src.exists():
+            self._set_notification(f"File not found: {src}")
+            return
+        folder = scaffold_ticket(self._tickets_root(), row.ticket_id)
+        gather_evidence(
+            folder=folder, zendesk_attachments=[], extra_files=[src], pastes=[]
+        )
+        self._set_notification(f"Attached {src.name} as evidence.")
+
+    def _attach_paste(self, arg: str) -> None:
+        row = self.selected_row
+        if row is None or "=" not in arg:
+            self._set_notification("Usage: /paste label=body (with a ticket selected)")
+            return
+        from noc_cli.evidence import PasteInput, gather_evidence
+        from noc_cli.scaffold import scaffold_ticket
+
+        label, _, body = arg.partition("=")
+        folder = scaffold_ticket(self._tickets_root(), row.ticket_id)
+        gather_evidence(
+            folder=folder, zendesk_attachments=[], extra_files=[],
+            pastes=[PasteInput(label=label.strip(), text=body)],
+        )
+        self._set_notification(f"Attached paste '{label.strip()}' as evidence.")
+
+    def _chat_retry(self) -> None:
+        row = self.selected_row
+        session = self._chat_sessions.get(row.ticket_id) if row else None
+        if session is None or not session.last_user_turn:
+            self._set_notification("Nothing to retry.")
+            return
+        self._submit_chat_turn(session.last_user_turn)
 
     def action_interrupt(self) -> None:
         target = self._chatting_id

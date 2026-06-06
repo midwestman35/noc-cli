@@ -634,3 +634,20 @@ async def test_freeform_input_starts_chat_and_renders(db_conn, tmp_path):
     assert "you ❯ why is this stuck?" in app.current_detail_text
     assert "Held in queue" in app.current_detail_text
     assert (tmp_path / "45747" / "CONVERSATION.jsonl").exists()
+
+
+async def test_slash_file_attaches_evidence(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    src = tmp_path / "pcap-excerpt.txt"
+    src.write_text("SIP 200 OK\n")
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = f"/file {src}"
+        await box.action_submit()
+        await pilot.pause()
+        notification_text = app.query_one("#notification").content
+    assert (tmp_path / "45747" / "logs" / "pcap-excerpt.txt").exists()
+    assert "attached" in notification_text.lower()

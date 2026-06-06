@@ -94,3 +94,24 @@ async def test_agent_turn_persisted_even_if_consumer_aborts(tmp_path):
     convo = (folder / "CONVERSATION.jsonl").read_text().splitlines()
     roles = [json.loads(line)["role"] for line in convo]
     assert roles == ["you", "agent"]  # both turns persisted despite the abort
+
+
+async def test_last_user_turn_tracks_redacted_input(tmp_path):
+    from noc_cli.tui.chat import ChatSession
+
+    folder = tmp_path / "9"
+    folder.mkdir()
+
+    class _C:
+        async def connect(self): return None
+        async def disconnect(self): return None
+        async def query(self, p): pass
+        async def receive_response(self):
+            class M: result = "ok"
+            yield M()
+        async def interrupt(self): pass
+
+    s = ChatSession(ticket_id=9, folder=folder, client_factory=lambda: _C())
+    async for _ in s.send("first question"):
+        pass
+    assert s.last_user_turn == "first question"

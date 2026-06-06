@@ -43,6 +43,13 @@ class ChatSession:
     def transcript(self) -> list[ChatTurn]:
         return list(self._turns)
 
+    @property
+    def last_user_turn(self) -> str:
+        for turn in reversed(self._turns):
+            if turn.role == "you":
+                return turn.text
+        return ""
+
     async def _ensure_client(self):
         if self._client is None:
             client = self._client_factory()
