@@ -28,7 +28,7 @@ def test_verify_true_on_normalized_match():
     low_audio_text = _load_runbook("low-audio")
     assert low_audio_text  # sanity
     # Pick a real line and mangle whitespace/case to exercise normalisation.
-    real_line = next(l for l in low_audio_text.splitlines() if l.strip())
+    real_line = next(ln for ln in low_audio_text.splitlines() if ln.strip())
     mangled = real_line.upper().replace(" ", "   ")
     h = _handoff(mangled, "low-audio")
     ok, note = verify_grounding(
@@ -57,7 +57,7 @@ def test_verify_true_on_resteer_to_a_different_runbook():
 
     no_ani_text = _load_runbook("no-ani")
     assert no_ani_text  # sanity
-    quoted = next(l for l in no_ani_text.splitlines() if l.strip())
+    quoted = next(ln for ln in no_ani_text.splitlines() if ln.strip())
     # selected was low-audio, but the agent re-steered and cited no-ani:
     h = _handoff(quoted, "no-ani")
     ok, note = verify_grounding(
