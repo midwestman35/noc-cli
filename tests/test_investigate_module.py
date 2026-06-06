@@ -25,6 +25,13 @@ async def test_investigate_forwards_config_and_memory_store_to_run_agent(
 
     monkeypatch.setattr(runner_mod, "run_agent", fake_run_agent)
 
+    async def fake_select_runbook(ticket_text, hypothesis, **kwargs):
+        from noc_cli.grounding import RunbookSelection
+
+        return RunbookSelection(slug=None, confidence="low", rationale="stub")
+
+    monkeypatch.setattr("noc_cli.grounding.select_runbook", fake_select_runbook)
+
     cfg = _cfg(tmp_path)
     with pytest.raises(InvestigationError):
         await run_investigation(
