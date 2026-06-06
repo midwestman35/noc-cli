@@ -25,6 +25,7 @@ dev = [
     "pytest>=8",
     "pytest-httpx>=0.30",
     "anyio>=4.0",
+    "ruff>=0.6",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -36,3 +37,19 @@ packages = ["noc_cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+# E/F = pycodestyle + pyflakes (defaults); I = isort; UP = pyupgrade
+select = ["E", "F", "I", "UP"]
+# E501 (line-too-long): the formatter owns line length — it wraps what it can
+# safely restructure and leaves long strings/URLs/comments intact. Flagging the
+# residue as a lint error is noise on an existing codebase, so ignore it.
+ignore = ["E501"]
+
+[tool.ruff.format]
+# Match the existing style: double quotes, spaces, trailing commas honored.
+quote-style = "double"
