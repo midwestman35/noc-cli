@@ -32,3 +32,6 @@ scratch/
 
 # Local session memory / scratch
 .remember/
+
+# Local planning docs
+docs/superpowers/
