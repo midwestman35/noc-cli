@@ -288,8 +288,6 @@ def test_transcript_stashed_on_double_failure(tmp_path):
 
 
 def test_run_agent_passes_mcp_servers_and_allowed_tools(tmp_path):
-    import anyio
-
     from noc_cli.config import Config
     from noc_cli.memory import MemoryStore
 
@@ -305,8 +303,8 @@ def test_run_agent_passes_mcp_servers_and_allowed_tools(tmp_path):
         if False:
             yield  # make this an async generator that yields nothing
 
-    anyio.run(
-        lambda: run_agent(
+    _run(
+        run_agent(
             ticket_id=761, folder=folder, system_prompt="sys", history_context="",
             config=config, memory_store=store, _query_fn=fake_query,
         )
