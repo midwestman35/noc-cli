@@ -131,6 +131,16 @@ def _render_fork_packet(fp: ForkPacket) -> str:
     else:
         lines.append("*(no runbook matched — symptom_tag is [unclassified])*")
 
+    gv = fp.grounding_verified
+    slug = fp.runbook_reference.slug or "rubric-core"
+    if gv is True:
+        grounding_line = f"- Grounding: ✓ grounded in `{slug}`"
+    elif gv is False:
+        grounding_line = f"- Grounding: ⚠ unverified ({fp.grounding_note})"
+    else:
+        grounding_line = "- Grounding: not checked"
+    lines += ["", grounding_line]
+
     if fp.historical_matches:
         lines += ["", "## Historical Matches"]
         for hm in fp.historical_matches:

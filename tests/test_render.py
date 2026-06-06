@@ -318,3 +318,26 @@ def test_render_reasoning_surfaces_pivot_fixture(tmp_path):
     assert "low-audio" in md
     assert "pivoting away from media" in md
     assert "Fork C" in md
+
+
+def test_render_shows_grounding_status():
+    from noc_cli.models import (
+        Confidence,
+        ForkLetter,
+        ForkPacket,
+        RunbookReference,
+    )
+    from noc_cli.render import _render_fork_packet
+
+    fp = ForkPacket(
+        fork_letter=ForkLetter.B,
+        confidence=Confidence.HIGH,
+        symptom_tag="[low audio]",
+        runbook_reference=RunbookReference(slug="low-audio", section="s"),
+    )
+    fp.grounding_verified = True
+    fp.grounding_note = "quoted row found in low-audio"
+
+    out = _render_fork_packet(fp)
+    assert "grounded" in out.lower() or "grounding" in out.lower()
+    assert "low-audio" in out
