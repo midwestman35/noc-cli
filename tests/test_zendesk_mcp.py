@@ -51,3 +51,33 @@ def test_fetch_ticket_maps_404_to_structured_error():
 def test_map_error_classifies_zendesk_auth():
     out = _map_error(ZendeskError("Zendesk auth failed - check token"))
     assert out["kind"] == "auth"
+
+
+from noc_cli.mcp.zendesk_server import fetch_comments
+from noc_cli.models import Comment
+
+
+class _FakeCommentsClient:
+    def __init__(self, comments=None, exc=None):
+        self._comments = comments or []
+        self._exc = exc
+
+    def get_comments(self, ticket_id):
+        if self._exc:
+            raise self._exc
+        return self._comments
+
+
+def _comment(**kw):
+    base = dict(id=1, author_id=42, public=True, body="callback 37.7749, -122.4194",
+                created_at="2026-06-01T00:00:00Z", attachments=[])
+    base.update(kw)
+    return Comment.model_validate(base)
+
+
+def test_fetch_comments_redacts_body_and_excludes_author_id():
+    out = fetch_comments(_FakeCommentsClient(comments=[_comment()]), 761)
+    assert out["comments"][0]["public"] is True
+    assert "<COORDS>" in out["comments"][0]["body"]
+    assert "author_id" not in out["comments"][0]
+    assert out["count"] == 1

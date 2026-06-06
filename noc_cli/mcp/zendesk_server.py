@@ -56,6 +56,25 @@ def fetch_ticket(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
     return redacted
 
 
+def fetch_comments(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
+    try:
+        comments = client.get_comments(int(ticket_id))
+    except Exception as exc:  # noqa: BLE001
+        return _map_error(exc)
+    items = [
+        {
+            "id": c.id,
+            "public": c.public,
+            "created_at": c.created_at,
+            "body": c.body,
+        }
+        for c in comments
+    ]
+    redacted, n = redact_value({"comments": items, "count": len(items)})
+    _log_residual("get_comments", ticket_id, n)
+    return redacted
+
+
 def _build_client() -> ZendeskClient:
     config = Config(
         zendesk_subdomain=os.environ.get("ZENDESK_SUBDOMAIN", ""),
