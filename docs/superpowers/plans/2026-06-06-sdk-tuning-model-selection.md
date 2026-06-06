@@ -22,13 +22,13 @@
 
 | File | Responsibility |
 |---|---|
-| `noc_cli/model_profiles.py` *(new)* | `ModelProfile(model, fallback_model=None, effort="medium", source="default")`; `_DEFAULTS` (4 profiles); `profile_for(surface) -> ModelProfile`. |
-| `noc_cli/usage.py` *(new)* | `log_usage(events_path, *, surface, profile, result_message, attempt=None)` — best-effort JSONL append. |
+| `noc_cli/model_profiles.py` *(new)* | `ModelProfile(model, fallback_model=None, effort="medium", source="default", override_var=None)`; `_DEFAULTS` (4 profiles); `profile_for(surface) -> ModelProfile`. |
+| `noc_cli/usage.py` *(new)* | `log_usage(events_path, *, surface, profile, result_message, attempt=None)` — best-effort JSONL append including the profile source and override variable. |
 | `noc_cli/agent/runner.py` *(modify)* | Set model/fallback/effort from `profile_for("investigate")`; `_drain(gen, on_result=...)`; log usage per attempt. |
-| `noc_cli/tui/chat.py` *(modify)* | Set model/effort from `profile_for("chat")`; log usage after the turn is captured, before yielding. |
+| `noc_cli/tui/chat.py` *(modify)* | Set model/effort from `profile_for("chat")`; log usage in the same abort-safe `finally` path that persists the agent turn. |
 | `noc_cli/scout/profiles.py` *(modify)* | `SCREEN`/`SYNTHESIS` source `model`+`effort` from `profile_for`. |
 | `noc_cli/scout/llm_io.py` *(modify)* | `final_result(query_gen, *, on_result=None)`. |
-| `noc_cli/scout/screen.py`, `synthesize.py`, `commands.py` *(modify)* | Thread `on_result` → `log_usage(data_dir()/"usage.jsonl", …)`. |
+| `noc_cli/scout/screen.py`, `synthesize.py` *(modify)* | Thread `on_result` → `log_usage(data_dir()/"usage.jsonl", …)`. |
 
 ---
 
@@ -70,6 +70,29 @@ def test_blank_override_is_ignored(monkeypatch):
     assert p.source == "default"
 
 
+def test_dotenv_override_is_used_when_process_env_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    monkeypatch.delenv("NOC_MODEL_CHAT", raising=False)
+    (tmp_path / ".env").write_text("NOC_MODEL_CHAT=claude-haiku-4-5\n", encoding="utf-8")
+
+    p = profile_for("chat")
+
+    assert p.model == "claude-haiku-4-5"
+    assert p.source == "dotenv"
+    assert p.override_var == "NOC_MODEL_CHAT"
+
+
+def test_process_env_beats_dotenv(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("NOC_MODEL_CHAT=claude-haiku-4-5\n", encoding="utf-8")
+    monkeypatch.setenv("NOC_MODEL_CHAT", "claude-sonnet-4-6")
+
+    p = profile_for("chat")
+
+    assert p.model == "claude-sonnet-4-6"
+    assert p.source == "env"
+
+
 def test_unknown_surface_raises():
     with pytest.raises(KeyError):
         profile_for("nope")
@@ -99,6 +122,7 @@ class ModelProfile:
     fallback_model: str | None = None
     effort: str = "medium"
     source: str = "default"  # "default" | "env" | "dotenv"
+    override_var: str | None = None
 
 
 _DEFAULTS: dict[str, ModelProfile] = {
@@ -138,7 +162,7 @@ def profile_for(surface: str) -> ModelProfile:
         except Exception:  # noqa: BLE001 — resolution must never crash option-build
             pass
 
-    resolved = base if override is None else replace(base, model=override, source=source)
+    resolved = replace(base, model=override or base.model, source=source, override_var=var)
     logger.info("model profile %s -> %s (source=%s)", surface, resolved.model, resolved.source)
     return resolved
 ```
@@ -146,7 +170,7 @@ def profile_for(surface: str) -> ModelProfile:
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `uv run pytest tests/test_model_profiles.py -v`
-Expected: PASS (4 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -192,6 +216,7 @@ def test_log_usage_writes_parseable_line(tmp_path):
     assert line["fallback_model"] == "claude-sonnet-4-6"
     assert line["effort"] == "high"
     assert line["profile_source"] == "default"
+    assert line["profile_override_var"] == "NOC_MODEL_INVESTIGATE"
     assert line["usage"]["cache_read_input_tokens"] == 7
     assert line["total_cost_usd"] == 0.01
 
@@ -267,6 +292,7 @@ def log_usage(
             "fallback_model": profile.fallback_model,
             "effort": profile.effort,
             "profile_source": profile.source,
+            "profile_override_var": profile.override_var,
         }
         if attempt is not None:
             entry["attempt"] = attempt
@@ -466,20 +492,23 @@ Expected: PASS already on values, but proceed to wire the source so the IDs are 
 
 - [ ] **Step 3: Implement**
 
-In `noc_cli/scout/profiles.py`, replace the hardcoded model strings in `SCREEN`/`SYNTHESIS` with registry lookups (keep all other fields):
+In `noc_cli/scout/profiles.py`, replace the hardcoded model strings in `SCREEN`/`SYNTHESIS` with registry lookups (keep all other fields). Resolve each profile once so model and effort come from the same env snapshot:
 ```python
 from noc_cli.model_profiles import profile_for  # add to imports
 
+_SCREEN_PROFILE = profile_for("scout_screen")
+_SYNTHESIS_PROFILE = profile_for("scout_synth")
+
 SCREEN = Profile(
-    model=profile_for("scout_screen").model,
-    effort=profile_for("scout_screen").effort,
+    model=_SCREEN_PROFILE.model,
+    effort=_SCREEN_PROFILE.effort,
     max_turns=12,
     allowed_tools=SCREEN_TOOLS,
 )
 
 SYNTHESIS = Profile(
-    model=profile_for("scout_synth").model,
-    effort=profile_for("scout_synth").effort,
+    model=_SYNTHESIS_PROFILE.model,
+    effort=_SYNTHESIS_PROFILE.effort,
     max_turns=6,
     allowed_tools=(),
 )
@@ -583,7 +612,7 @@ git commit -m "feat(scout): final_result optional on_result callback for usage l
 
 ### Task 6: Scout screen/synthesize log usage to the stable usage log
 
-**Files:** Modify `noc_cli/scout/screen.py`, `noc_cli/scout/synthesize.py`; Test `tests/test_scout_synthesize.py`.
+**Files:** Modify `noc_cli/scout/screen.py`, `noc_cli/scout/synthesize.py`; Test `tests/test_scout_synthesize.py`, `tests/test_scout_screen.py`.
 
 **Context:** `screen_ticket` and `synthesize` each call `final_result(query_fn(prompt=..., options=options_factory()))`. Add a usage callback that writes to `data_dir() / "usage.jsonl"` with the matching surface + profile. Read each file first to match its exact call site.
 
@@ -601,7 +630,11 @@ def test_synthesize_logs_usage(tmp_path, monkeypatch):
 
     async def fake_query(*, prompt, options):
         class R:
-            result = '{"summary":"x","themes":[],"candidates":[]}'
+            result = (
+                '{"ranked":[{"ticket_id":1,"rank":1,"rationale":"x",'
+                '"runbook_id":"low-audio","runbook_match_confidence":0.4,'
+                '"missing_evidence":[]}]}'
+            )
             usage = {"input_tokens": 1, "cache_read_input_tokens": 0}
             total_cost_usd = 0.0
             num_turns = 1
@@ -609,11 +642,16 @@ def test_synthesize_logs_usage(tmp_path, monkeypatch):
 
         yield R()
 
-    import anyio
+    report = _run(
+        synthesize(
+            REPORTS,
+            query_fn=fake_query,
+            now=NOW,
+            options_factory=lambda: None,
+        )
+    )
 
-    # Minimal inputs mirroring existing synthesize tests in this file:
-    anyio.run(lambda: _invoke_synthesize(synthesize, fake_query))  # see helper note below
-
+    assert report.ranked
     usage_log = tmp_path / "usage.jsonl"
     assert usage_log.exists()
     line = json.loads(usage_log.read_text().splitlines()[-1])
@@ -621,7 +659,42 @@ def test_synthesize_logs_usage(tmp_path, monkeypatch):
     assert line["model"] == "claude-opus-4-8"
 ```
 
-**Implementer note:** replace `_invoke_synthesize(...)` with the actual `synthesize(...)` call signature used by the existing tests in `tests/test_scout_synthesize.py` (mirror their `screened`, `query_fn`, `cwd`/workspace args). The contract to assert is: a `scout_synth` usage line lands in `data_dir()/"usage.jsonl"`. Confirm `NOC_HOME` redirects `data_dir()` (it does — `config.data_dir()` honors `NOC_HOME`).
+The contract to assert is: a `scout_synth` usage line lands in `data_dir()/"usage.jsonl"`. Confirm `NOC_HOME` redirects `data_dir()` (it does — `config.data_dir()` honors `NOC_HOME`).
+
+Add a matching assertion to `tests/test_scout_screen.py`:
+```python
+import json
+
+
+def test_screen_ticket_logs_usage(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOC_HOME", str(tmp_path))
+
+    async def fake_query(*, prompt, options):
+        class R:
+            result = GOOD
+            usage = {"input_tokens": 1, "cache_read_input_tokens": 0}
+            total_cost_usd = 0.0
+            num_turns = 1
+            session_id = "s"
+
+        yield R()
+
+    candidate = Candidate(ticket_id=42, subject="audio dropouts")
+    report = _run(
+        screen_ticket(
+            candidate,
+            runbooks_dir=tmp_path / "runbooks",
+            query_fn=fake_query,
+            options_factory=lambda: None,
+        )
+    )
+
+    assert report is not None
+    usage_log = tmp_path / "usage.jsonl"
+    line = json.loads(usage_log.read_text().splitlines()[-1])
+    assert line["surface"] == "scout_screen"
+    assert line["model"] == "claude-haiku-4-5"
+```
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -671,7 +744,7 @@ Expected: PASS — new usage test + all existing scout screen/synthesize tests (
 - [ ] **Step 5: Commit**
 
 ```bash
-git add noc_cli/scout/screen.py noc_cli/scout/synthesize.py tests/test_scout_synthesize.py
+git add noc_cli/scout/screen.py noc_cli/scout/synthesize.py tests/test_scout_synthesize.py tests/test_scout_screen.py
 git commit -m "feat(scout): log screen/synth usage to data-dir usage.jsonl"
 ```
 
@@ -685,29 +758,29 @@ git commit -m "feat(scout): log screen/synth usage to data-dir usage.jsonl"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/test_tui_chat.py` (mirror the file's existing chat-session test harness for client injection):
+Add to `tests/test_tui_chat.py`:
 ```python
-def test_chat_options_use_sonnet_profile():
+def test_chat_options_use_sonnet_profile(tmp_path, monkeypatch):
     from noc_cli.tui.chat import build_sdk_client_factory
 
     # build_sdk_client_factory(folder) returns a no-arg factory producing a
     # ClaudeSDKClient; capture the options it was constructed with.
     captured = {}
 
-    import noc_cli.tui.chat as chat_mod
-
     class FakeClient:
         def __init__(self, options=None):
             captured["options"] = options
 
-    # Patch the SDK client symbol used inside the factory (mirror how existing
-    # tests inject a fake client), then build one:
-    # ... see implementer note ...
+    import claude_agent_sdk
+
+    monkeypatch.setattr(claude_agent_sdk, "ClaudeSDKClient", FakeClient)
+    build_sdk_client_factory(tmp_path)()
+
     assert captured["options"].model == "claude-sonnet-4-6"
     assert captured["options"].effort == "medium"
 ```
 
-**Implementer note:** the existing tests in `tests/test_tui_chat.py` already inject/mock the `ClaudeSDKClient`; reuse that exact mechanism to capture the constructed `ClaudeAgentOptions`. The assertion contract is: chat options carry `model="claude-sonnet-4-6"` and `effort="medium"`. Also add (or extend an existing test) to assert a `surface="chat"` usage line is written after a turn — reuse the file's existing fake-response harness — and **confirm the existing abort-persistence test still passes unchanged**.
+Also add (or extend an existing test) to assert a `surface="chat"` usage line is written after a turn — reuse the file's existing fake-response harness — and **confirm the existing abort-persistence test still passes unchanged**.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -733,21 +806,22 @@ In `noc_cli/tui/chat.py`:
         )
 ```
 
-(b) In `ChatSession.send`, after the loop that drains `receive_response()` has captured the terminal `ResultMessage` and **after the agent turn is persisted** (the existing abort-safe point) but before/around yielding, log usage. Capture the terminal message during the drain (the message with a `result`/usage payload) into a local, then:
+(b) In `ChatSession.send`, capture the terminal message during the drain (the message with a `result`/usage payload) into a local, and log usage in the same `finally` block that persists the agent turn. This preserves the existing abort-safe behavior because closing the generator after the first yielded agent line still runs `finally`.
 ```python
-        from noc_cli.config import data_dir  # noqa: PLC0415 (or use folder/events.jsonl — see note)
         from noc_cli.model_profiles import profile_for  # noqa: PLC0415
         from noc_cli.usage import log_usage  # noqa: PLC0415
 
-        if terminal_message is not None:
-            log_usage(
-                self._folder / "events.jsonl",
-                surface="chat",
-                profile=profile_for("chat"),
-                result_message=terminal_message,
-            )
+        finally:
+            self._append(ChatTurn(role="agent", text=reply, ts=_now()))
+            if terminal_message is not None:
+                log_usage(
+                    self._folder / "events.jsonl",
+                    surface="chat",
+                    profile=profile_for("chat"),
+                    result_message=terminal_message,
+                )
 ```
-**Implementer note:** chat is per-ticket, so log to the ticket's `events.jsonl` (the chat session already knows its folder — use that path; do not use `data_dir()` here). Place the `log_usage` call so it runs on the same path as turn-persistence, i.e. it must still execute if the consumer aborts iteration after persistence (match the existing finally/persist structure rather than putting it after the final `yield`).
+**Implementer note:** chat is per-ticket, so log to the ticket's `events.jsonl` (the chat session already knows its folder — use that path; do not use `data_dir()` here). Keep the existing reply-yield loop inside the `try`; the shown `finally` replaces the current one-line append-only `finally`.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -789,7 +863,7 @@ git add -A && git commit -m "style(ruff): tidy SDK-tuning modules" || echo "noth
 
 **Spec coverage:**
 - Central registry, pinned + env (process→.env) + source + blank-ignored + unknown-raises → Task 1 ✔
-- `log_usage` rich line (surface/attempt/model/fallback/effort/profile_source/usage/model_usage/cost/turns/session), best-effort → Task 2 ✔
+- `log_usage` rich line (surface/attempt/model/fallback/effort/profile_source/profile_override_var/usage/model_usage/cost/turns/session), best-effort → Task 2 ✔
 - Investigate Opus + fallback + effort + per-attempt usage → Task 3 ✔
 - Scout models centralized, behavior unchanged → Task 4 ✔
 - `final_result` on_result seam (return unchanged) → Task 5 ✔
@@ -798,6 +872,6 @@ git add -A && git commit -m "style(ruff): tidy SDK-tuning modules" || echo "noth
 - No live model calls in tests; full regression → Task 8 ✔
 - Out-of-scope (thinking/budget/scout-model-change/prompt-content) → not touched ✔
 
-**Placeholder scan:** Tasks 6 and 7 carry explicit *implementer notes* (mirror existing test harness for the synthesize signature / chat client injection / abort-safe placement) rather than fabricated assertions — flagged, not hidden, because those exact local shapes must be read from the files at implementation time. All production-code steps show complete code.
+**Placeholder scan:** No placeholder helper calls remain. Task 7 names the exact lazy-import monkeypatch target and the abort-safe `finally` placement. All production-code steps show complete code.
 
-**Type/name consistency:** `ModelProfile(model, fallback_model, effort, source)` and `profile_for(surface)` are used identically in Tasks 1–7. `log_usage(events_path, *, surface, profile, result_message, attempt=None)` matches every call site (runner attempt=1/2; scout/chat omit attempt). `final_result(query_gen, *, on_result=None)` matches Tasks 5/6. Surface keys (`investigate`, `chat`, `scout_screen`, `scout_synth`) match the registry, the env-var names, and the usage `surface` field throughout.
+**Type/name consistency:** `ModelProfile(model, fallback_model, effort, source, override_var)` and `profile_for(surface)` are used identically in Tasks 1–7. `log_usage(events_path, *, surface, profile, result_message, attempt=None)` matches every call site (runner attempt=1/2; scout/chat omit attempt). `final_result(query_gen, *, on_result=None)` matches Tasks 5/6. Surface keys (`investigate`, `chat`, `scout_screen`, `scout_synth`) match the registry, the env-var names, and the usage `surface` field throughout.
