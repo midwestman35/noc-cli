@@ -303,6 +303,15 @@ class TicketList(Static, can_focus=True):
         self._render_rows()
         return True
 
+    def select_ticket(self, ticket_id: int) -> bool:
+        """Move the cursor to the row with this id. Returns True if found."""
+        for index, row in enumerate(self._rows):
+            if row.ticket_id == ticket_id:
+                self.cursor_index = index
+                self._render_rows()
+                return True
+        return False
+
     # Each row is two logical lines: a title line ("#id subject", which wraps to
     # the pane width) and an indented metadata line (age). The colored status
     # sits just before the ✓/○ icon, padded to a fixed width so every title
@@ -718,6 +727,16 @@ class WatchApp(App[None]):
         self._rebuild_rows(self._current_tickets)
         self._schedule_pulse_clear()
 
+        if self._investigate_after_poll is not None:
+            tid = self._investigate_after_poll
+            self._investigate_after_poll = None
+            # Select the now-assigned ticket so the investigate takeover renders
+            # live; if the watch view has not surfaced it yet, investigate by id
+            # anyway (it still runs and lands under "Recently worked").
+            self.query_one("#ticket-list", TicketList).select_ticket(tid)
+            self._detail_index = 0
+            self._begin_investigate(tid)
+
     def _rebuild_rows(self, live_tickets: list[Ticket]) -> None:
         ticket_list = self.query_one("#ticket-list", TicketList)
         previous_id = ticket_list.selected_ticket_id
@@ -1033,10 +1052,12 @@ class WatchApp(App[None]):
         row = self.selected_row
         if row is None:
             return
+        self._begin_investigate(row.ticket_id)
+
+    def _begin_investigate(self, tid: int) -> None:
         if self._investigating_id is not None:
             self._set_notification("An investigation is already running.")
             return
-        tid = row.ticket_id
         self._investigating_id = tid
         self._investigate_lines = []
         self._investigate_phases = {label: False for _sub, label in INVESTIGATE_PHASES}
@@ -1232,7 +1253,8 @@ class WatchApp(App[None]):
         self._pending_take = None
         self._pending_take_owner = None
         self._scout_active = False
-        self._set_notification(f"Assigned #{tid} to you.")
+        self._set_notification(f"Assigned #{tid} to you — investigating…")
+        self._investigate_after_poll = tid
         self.action_poll_now()
 
     def _render_scout_panel(self) -> str:

@@ -1252,3 +1252,38 @@ async def test_take_surfaces_write_error(db_conn, tmp_path):
         notification_text = app.query_one("#notification").content
     assert app._pending_take is None
     assert "auth failed on assign" in notification_text
+
+
+async def test_select_ticket_moves_cursor(db_conn, tmp_path):
+    from noc_cli.tui.watch_app import TicketList
+
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(1), _ticket(2), _ticket(3)]]),
+        WatchState(db_conn),
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        tlist = app.query_one("#ticket-list", TicketList)
+        assert tlist.select_ticket(3) is True
+        assert tlist.selected_ticket_id == 3
+        assert tlist.select_ticket(999) is False
+
+
+async def test_take_handoff_selects_and_investigates_after_poll(db_conn, tmp_path):
+    from noc_cli.tui.watch_app import TicketList
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(5012)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        with patch.object(app, "_run_investigate") as run_inv:
+            app._take_assigned(5012)  # clears scout, sets handoff, triggers poll
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        assert app._scout_active is False
+        assert app._investigate_after_poll is None
+        assert app._investigating_id == 5012
+        run_inv.assert_called_once_with(5012)
+        assert app.query_one("#ticket-list", TicketList).selected_ticket_id == 5012
