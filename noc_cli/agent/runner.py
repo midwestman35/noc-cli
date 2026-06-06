@@ -121,12 +121,12 @@ async def _drain(
     """Drain the agent stream and keep both final result and intermediate turns."""
     raw = ""
     transcript: list[TranscriptEntry] = []
+    result_message = None
     async for message in query_gen:
         result_text = getattr(message, "result", None)
         if result_text is not None:
             raw = result_text
-            if on_result is not None:
-                on_result(message)
+            result_message = message
             transcript.append(
                 TranscriptEntry(
                     kind="result",
@@ -168,6 +168,8 @@ async def _drain(
                         raw_text=str(tool_result),
                     )
                 )
+    if on_result is not None and result_message is not None:
+        on_result(result_message)
     return raw, transcript
 
 
