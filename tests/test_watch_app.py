@@ -1171,9 +1171,21 @@ async def test_enter_confirms_take_and_assigns(db_conn, tmp_path):
         app._scout_active = True
         app._pending_take = 5012
         app._pending_take_owner = 7
+
+        async def _fake_auto_investigation(*, ticket_id, on_line=None, **kw):
+            # The take confirm triggers auto-investigate; stub the whole flow so
+            # it never runs a live investigation (run_agent / select_runbook).
+            if on_line:
+                on_line("auto-investigate (stubbed)")
+            return tmp_path / str(ticket_id)
+
         with (
             patch("noc_cli.scout.commands.preflight_current_ticket", return_value=None),
             patch("noc_cli.scout.commands.make_writer", return_value=writer),
+            patch(
+                "noc_cli.investigate.run_investigation",
+                side_effect=_fake_auto_investigation,
+            ),
         ):
             box = app.query_one("#command", Input)
             box.value = ""
