@@ -6,7 +6,6 @@ from pathlib import Path
 
 from noc_cli.watch.inbox import InboxSummary
 
-
 _SCALAR_KEYS = {
     "ticket_id",
     "fork",

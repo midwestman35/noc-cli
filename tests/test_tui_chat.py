@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 
@@ -81,6 +80,7 @@ async def test_interrupt_delegates_to_client(tmp_path):
 
 async def test_agent_turn_persisted_even_if_consumer_aborts(tmp_path):
     import json
+
     from noc_cli.tui.chat import ChatSession
 
     folder = tmp_path / "555"

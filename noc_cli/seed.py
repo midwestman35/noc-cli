@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from noc_cli.runbooks import DOMAIN_MAP
 

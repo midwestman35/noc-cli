@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 from noc_cli.watch.disk_scan import parse_state_md, scan_investigations
 
-
 FULL_STATE = """---
 ticket_id: 44999
 fork: "B"

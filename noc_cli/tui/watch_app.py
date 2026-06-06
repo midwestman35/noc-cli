@@ -18,10 +18,10 @@ from textual.widgets import Footer, Input, Static
 
 from noc_cli import __version__
 from noc_cli.config import Config
-from noc_cli.tui.chat import ChatSession, build_sdk_client_factory
-from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
+from noc_cli.tui.chat import ChatSession, build_sdk_client_factory
+from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
 from noc_cli.watch.diff import (
     ChangeEvent,
     ChangeKind,

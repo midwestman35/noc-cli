@@ -16,7 +16,6 @@ from noc_cli.watch.inbox import (
     resolve_display_tz,
 )
 
-
 NOW = datetime(2026, 6, 4, 12, 0, tzinfo=timezone.utc)
 
 

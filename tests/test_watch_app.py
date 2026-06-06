@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -541,6 +541,7 @@ async def test_help_lists_commands_in_detail(db_conn, tmp_path):
 
 async def test_slash_copy_copies_current_detail(db_conn, tmp_path):
     from textual.widgets import Input
+
     from noc_cli.tui.watch_app import WatchApp
 
     app = _make_app(
@@ -741,7 +742,6 @@ async def test_slash_paste_attaches_evidence(db_conn, tmp_path):
 
 async def test_close_all_chat_sessions_disconnects_clients(db_conn, tmp_path):
     from noc_cli.tui.chat import ChatSession
-    from noc_cli.tui.watch_app import WatchApp
 
     disconnected = {"flag": False}
 
