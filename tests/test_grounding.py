@@ -52,6 +52,16 @@ def test_verify_none_when_no_quote():
     assert ok is None
 
 
+def test_verify_rubric_core_path_when_no_slug():
+    # selection had no slug → verify the quote against the passed rubric-core text
+    h = _handoff("CORE MARKER ROW", "")
+    ok, note = verify_grounding(
+        h, selected_slug=None, runbook_text="rubric core ... CORE MARKER ROW ... end"
+    )
+    assert ok is True
+    assert "rubric-core" in note
+
+
 def test_verify_true_on_resteer_to_a_different_runbook():
     from noc_cli.runbooks import _load_runbook
 

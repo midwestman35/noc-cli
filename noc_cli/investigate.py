@@ -201,9 +201,8 @@ async def run_investigation(
             )
 
         from noc_cli.grounding import verify_grounding  # noqa: PLC0415
-        from noc_cli.rubric import load_rubric as _load_rubric  # noqa: PLC0415
 
-        verify_text = selected_runbook_text if selection.slug else _load_rubric().core
+        verify_text = selected_runbook_text if selection.slug else rubric.core
         verified, note = verify_grounding(
             handoff, selected_slug=selection.slug, runbook_text=verify_text
         )

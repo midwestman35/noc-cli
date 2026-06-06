@@ -174,9 +174,6 @@ async def test_investigate_classifies_injects_and_verifies(monkeypatch, tmp_path
     # (2) verify_grounding set grounding_verified on the handoff (True/False/None, not unset)
     assert returned_handoff, "fake_run_agent was never called"
     ho = returned_handoff[0]
-    assert ho.fork_packet.grounding_verified is not None or True, (
-        "grounding_verified should be set by verify_grounding"
-    )
     # grounding_verified is a bool|None — confirm it was touched (not the default unset state)
     # verify_grounding always returns (bool|None, str); the field is set unconditionally
     assert "grounding_verified" in ho.fork_packet.model_fields_set or (
