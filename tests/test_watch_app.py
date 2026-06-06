@@ -868,3 +868,44 @@ async def test_arrows_navigate_tickets_when_menu_closed(db_conn, tmp_path):
         await pilot.press("down")
         await pilot.pause()
         assert app.selected_row.ticket_id != before
+
+
+async def test_tab_completes_highlighted_command(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "/in"
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        assert box.value == "/investigate "
+        assert app._ac_open is False
+
+
+async def test_shift_tab_swallowed_while_menu_open(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    # An investigated ticket makes the file tabs (index > 1) reachable, so a
+    # stray shift+tab would actually move _detail_index off 0 — that's what the
+    # swallow guard must prevent. (Without an investigated row, _refresh_detail
+    # resets a file-tab index back to 0, masking the guard.)
+    _write_state(tmp_path, 1)
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        assert app._detail_index == 0
+        box = app.query_one("#command", Input)
+        box.value = "/"
+        await pilot.pause()
+        await pilot.press("shift+tab")
+        await pilot.pause()
+        # Menu open => shift+tab must NOT cycle the detail view.
+        assert app._detail_index == 0
+        assert app._ac_open is True
