@@ -21,9 +21,6 @@ ALLOWED_TOOLS = [
     "Write",  # sandbox-scoped by harness
     "Edit",  # sandbox-scoped by harness
     "Bash",  # read-only patterns enforced by harness
-    # NOTE: live history-search + read-only Zendesk SDK MCP tools (agent/tools.py)
-    # are DEFERRED to a follow-on plan. The agent operates on the pre-seeded
-    # history written to the ticket folder (Task 10) + the sandbox file tools above.
 ]
 
 
@@ -174,6 +171,8 @@ async def run_agent(
     system_prompt: str,
     history_context: str,
     initial_hypothesis: str = "",
+    config=None,
+    memory_store=None,
     _query_fn: Callable | None = None,
 ) -> RunnerResult:
     """Run the L3 triage agent and return a RunnerResult.
@@ -195,14 +194,22 @@ async def run_agent(
     events_path = folder.root / "events.jsonl"
     hooks = build_hooks(sandbox_root=folder.root, events_path=events_path)
 
+    mcp_servers: dict = {}
+    extra_tools: list[str] = []
+    if config is not None and memory_store is not None:
+        from noc_cli.agent.tools import build_mcp_servers  # noqa: PLC0415
+
+        mcp_servers, extra_tools = build_mcp_servers(config, memory_store)
+
     def _make_options() -> ClaudeAgentOptions:
         return ClaudeAgentOptions(
             system_prompt=system_prompt,
-            allowed_tools=ALLOWED_TOOLS,
+            allowed_tools=ALLOWED_TOOLS + extra_tools,
             permission_mode="bypassPermissions",
             max_turns=MAX_TURNS,
             cwd=str(folder.root),
             hooks=hooks,
+            mcp_servers=mcp_servers,
         )
 
     if initial_hypothesis:

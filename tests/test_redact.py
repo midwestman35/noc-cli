@@ -1,4 +1,4 @@
-from noc_cli.redact import RedactionCounts, redact, residual_pii_warning
+from noc_cli.redact import RedactionCounts, redact, redact_value, residual_pii_warning
 
 
 def test_redacts_phone():
@@ -72,3 +72,20 @@ def test_redacts_two_space_separated_phones():
     out, counts = redact("555-123-4567 555-987-6543")
     assert out == "<PHONE> <PHONE>"
     assert counts.phones == 2
+
+
+def test_redact_value_scrubs_string_leaves_and_counts():
+    obj = {"loc": "37.7749, -122.4194", "id": 5, "tags": ["x"]}
+    out, total = redact_value(obj)
+    assert out["loc"] == "<COORDS>"
+    assert out["id"] == 5  # non-str untouched
+    assert out["tags"] == ["x"]
+    assert total == 1
+
+
+def test_redact_value_recurses_into_lists_of_dicts():
+    obj = {"comments": [{"body": "37.7749, -122.4194"}, {"body": "clean"}]}
+    out, total = redact_value(obj)
+    assert out["comments"][0]["body"] == "<COORDS>"
+    assert out["comments"][1]["body"] == "clean"
+    assert total == 1

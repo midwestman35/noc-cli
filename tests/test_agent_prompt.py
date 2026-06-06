@@ -7,6 +7,15 @@ from noc_cli.rubric import load_rubric
 from noc_cli.runbooks import RUNBOOK_SLUGS
 
 
+def test_system_prompt_documents_live_tools():
+    sp = build_system_prompt("## Symptom Class\nx")
+    assert "Live tools" in sp
+    for token in ("get_ticket", "get_comments", "search", "search_history"):
+        assert token in sp
+    # reinforces that live output is already redacted
+    assert "redacted" in sp.lower()
+
+
 def test_system_prompt_contains_role():
     assert "NOC" in SYSTEM_PROMPT
     assert "triage" in SYSTEM_PROMPT.lower()

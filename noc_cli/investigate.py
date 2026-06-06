@@ -160,6 +160,8 @@ async def run_investigation(
             system_prompt=system_prompt,
             history_context=history_context,
             initial_hypothesis=initial_hypothesis,
+            config=config,
+            memory_store=mem_store,
         )
         transcript = runner_result.transcript
         handoff = runner_result.handoff
