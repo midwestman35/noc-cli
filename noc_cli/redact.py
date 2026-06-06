@@ -118,3 +118,31 @@ def residual_pii_warning(redacted: str, counts: RedactionCounts) -> str | None:
             f"scrub (soft-warn; payload not blocked)"
         )
     return None
+
+
+def redact_value(value):
+    """Recursively redact string leaves in a JSON-like structure.
+
+    Returns ``(redacted_value, total_redactions)``. Dicts and lists are walked;
+    non-string leaves pass through untouched. ``total_redactions`` is the sum of
+    phone/address/coordinate substitutions across all string leaves.
+    """
+    if isinstance(value, str):
+        red, counts = redact(value)
+        return red, counts.phones + counts.addresses + counts.coords
+    if isinstance(value, dict):
+        out: dict = {}
+        total = 0
+        for key, val in value.items():
+            out[key], n = redact_value(val)
+            total += n
+        return out, total
+    if isinstance(value, list):
+        out_list = []
+        total = 0
+        for item in value:
+            red_item, n = redact_value(item)
+            out_list.append(red_item)
+            total += n
+        return out_list, total
+    return value, 0
