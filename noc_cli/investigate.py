@@ -120,11 +120,29 @@ async def run_investigation(
 
     history_context = ""
     if fixture is None:
-        from noc_cli.history import seed_history
-        from noc_cli.zendesk import ZendeskClient
+        from noc_cli.grounding import select_runbook  # noqa: PLC0415
+        from noc_cli.history import seed_history  # noqa: PLC0415
+        from noc_cli.runbooks import DOMAIN_MAP  # noqa: PLC0415
+        from noc_cli.zendesk import ZendeskClient  # noqa: PLC0415
+
+        ticket_md = folder.root / "logs" / "00-ticket.md"
+        ticket_text = (
+            ticket_md.read_text(encoding="utf-8") if ticket_md.exists() else ""
+        )
+        selection = await select_runbook(ticket_text, initial_hypothesis)
+        emit(
+            f"Runbook selected: {selection.slug or '[unclassified]'} ({selection.confidence})"
+        )
+
+        if selection.slug:
+            _slug_to_tag = {s.slug: s.tag for s in DOMAIN_MAP}
+            symptom_tag = _slug_to_tag.get(
+                selection.slug, initial_hypothesis or "[unclassified]"
+            )
+        else:
+            symptom_tag = initial_hypothesis or "[unclassified]"
 
         zd_for_history = ZendeskClient(config)
-        symptom_tag = initial_hypothesis or "[unclassified]"
         candidates = seed_history(
             symptom_tag, zendesk_client=zd_for_history, memory_store=mem_store
         )
@@ -148,18 +166,24 @@ async def run_investigation(
             raise InvestigationError(f"fixture {handoff_path} not found")
         handoff = Handoff.model_validate(json.loads(handoff_path.read_text()))
     else:
-        from noc_cli.agent.prompt import build_system_prompt
-        from noc_cli.agent.runner import run_agent
-        from noc_cli.rubric import load_rubric
+        from noc_cli.agent.prompt import build_system_prompt  # noqa: PLC0415
+        from noc_cli.agent.runner import run_agent  # noqa: PLC0415
+        from noc_cli.rubric import load_rubric  # noqa: PLC0415
+        from noc_cli.runbooks import _load_runbook  # noqa: PLC0415
 
         rubric = load_rubric()
         system_prompt = build_system_prompt(rubric.core)
+        selected_runbook_text = (
+            _load_runbook(selection.slug) if selection.slug else None
+        )
         runner_result = await run_agent(
             ticket_id=ticket_id,
             folder=folder,
             system_prompt=system_prompt,
             history_context=history_context,
             initial_hypothesis=initial_hypothesis,
+            selected_runbook_slug=selection.slug,
+            selected_runbook_text=selected_runbook_text,
             config=config,
             memory_store=mem_store,
         )
@@ -167,7 +191,7 @@ async def run_investigation(
         handoff = runner_result.handoff
         if handoff is None:
             try:
-                from noc_cli.render import render_reasoning
+                from noc_cli.render import render_reasoning  # noqa: PLC0415
 
                 render_reasoning(transcript, None, folder)
             except Exception:
@@ -175,6 +199,34 @@ async def run_investigation(
             raise InvestigationError(
                 f"agent failed after 2 attempts; raw stashed to {runner_result.stash_path}"
             )
+
+        from noc_cli.grounding import verify_grounding  # noqa: PLC0415
+        from noc_cli.rubric import load_rubric as _load_rubric  # noqa: PLC0415
+
+        verify_text = selected_runbook_text if selection.slug else _load_rubric().core
+        verified, note = verify_grounding(
+            handoff, selected_slug=selection.slug, runbook_text=verify_text
+        )
+        handoff.fork_packet.grounding_verified = verified
+        handoff.fork_packet.grounding_note = note
+        try:
+            import json as _json  # noqa: PLC0415
+
+            with (folder.root / "events.jsonl").open("a", encoding="utf-8") as f:
+                f.write(
+                    _json.dumps(
+                        {
+                            "type": "grounding",
+                            "selected_slug": selection.slug,
+                            "confidence": selection.confidence,
+                            "verified": verified,
+                            "note": note,
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:  # noqa: BLE001
+            pass
     emit("Agent completed")
 
     from noc_cli.render import (
