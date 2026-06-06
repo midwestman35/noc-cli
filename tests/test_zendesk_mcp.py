@@ -101,3 +101,20 @@ def test_search_caps_results_and_redacts_subjects():
     assert len(out["results"]) == SEARCH_CAP
     assert "<COORDS>" in out["results"][0]["subject"]
     assert set(out["results"][0].keys()) == {"id", "subject", "status", "tags"}
+
+
+import anyio
+
+from noc_cli.mcp.zendesk_server import build_server
+
+
+def test_server_registers_exactly_the_three_read_tools():
+    server = build_server(client=_FakeClient(ticket=_ticket()))
+    tools = anyio.run(server.list_tools)
+    names = sorted(t.name for t in tools)
+    assert names == ["get_comments", "get_ticket", "search"]
+    # No write-capable tool names exist.
+    assert not any(
+        n.startswith(("create", "update", "delete", "add_comment", "close", "set"))
+        for n in names
+    )

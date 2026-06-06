@@ -94,6 +94,49 @@ def search_tickets(client: ZendeskClient, query: str, cap: int = SEARCH_CAP) -> 
     return redacted
 
 
+def build_server(client: ZendeskClient | None = None):
+    """Build the FastMCP server. `client` is injectable for tests."""
+    from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+
+    zd = client if client is not None else _build_client()
+    server = FastMCP("zendesk")
+
+    @server.tool(
+        name="get_ticket",
+        description="Fetch one Zendesk ticket by id. Read-only; output is PII-redacted. "
+        "Use to re-fetch the current ticket if the seeded copy may be stale, or to "
+        "inspect a related ticket id you discovered.",
+    )
+    def get_ticket(ticket_id: int) -> str:
+        return json.dumps(fetch_ticket(zd, ticket_id))
+
+    @server.tool(
+        name="get_comments",
+        description="Fetch the comment thread for a ticket id. Read-only; PII-redacted.",
+    )
+    def get_comments(ticket_id: int) -> str:
+        return json.dumps(fetch_comments(zd, ticket_id))
+
+    @server.tool(
+        name="search",
+        description="Search Zendesk tickets (Zendesk query syntax). Read-only; PII-redacted; "
+        f"capped at {SEARCH_CAP} results.",
+    )
+    def search(query: str) -> str:
+        return json.dumps(search_tickets(zd, query))
+
+    return server
+
+
+def main() -> None:
+    """Console entry / `python -m noc_cli.mcp.zendesk_server` — run stdio transport."""
+    build_server().run()  # transport defaults to "stdio"
+
+
+if __name__ == "__main__":
+    main()
+
+
 def _build_client() -> ZendeskClient:
     config = Config(
         zendesk_subdomain=os.environ.get("ZENDESK_SUBDOMAIN", ""),
