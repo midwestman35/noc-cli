@@ -125,7 +125,10 @@ class _FakeClient:
         return [ticket.model_copy(deep=True) for ticket in batch]
 
     def get_comments(self, ticket_id):
-        return [comment.model_copy(deep=True) for comment in self._comments.get(ticket_id, [])]
+        return [
+            comment.model_copy(deep=True)
+            for comment in self._comments.get(ticket_id, [])
+        ]
 
 
 def _make_app(cfg, client, ws):
@@ -164,8 +167,12 @@ async def test_poll_populates_worked_and_live_queue_segments(db_conn, tmp_path):
     from noc_cli.tui.watch_app import TicketList
 
     _write_state(tmp_path, 101, status="solved", owner="enrique")
-    _write_state(tmp_path, 303, fork="A", confidence="Medium", status="open", owner="maya")
-    client = _FakeClient([[_ticket(202, status="open"), _ticket(303, status="pending")]])
+    _write_state(
+        tmp_path, 303, fork="A", confidence="Medium", status="open", owner="maya"
+    )
+    client = _FakeClient(
+        [[_ticket(202, status="open"), _ticket(303, status="pending")]]
+    )
     app = _make_app(_make_config(tmp_path), client, WatchState(db_conn))
 
     async with app.run_test(size=(140, 40)) as pilot:
@@ -181,8 +188,8 @@ async def test_poll_populates_worked_and_live_queue_segments(db_conn, tmp_path):
     assert "○" in text and "#202" in text
     assert "#303" in text
     # Statuses are shown for both worked (from STATE.md) and live rows.
-    assert "solved" in text   # worked #101
-    assert "open" in text     # live #202
+    assert "solved" in text  # worked #101
+    assert "open" in text  # live #202
     assert "pending" in text  # live #303
     # Subjects (the agent-friendly name) are shown for live queue rows.
     assert "Ticket 202" in text
@@ -190,7 +197,9 @@ async def test_poll_populates_worked_and_live_queue_segments(db_conn, tmp_path):
     assert "3 tickets" in banner_text
 
 
-async def test_poll_error_keeps_disk_backed_recently_worked_and_notification(db_conn, tmp_path):
+async def test_poll_error_keeps_disk_backed_recently_worked_and_notification(
+    db_conn, tmp_path
+):
     from noc_cli.tui.watch_app import TicketList
 
     _write_state(tmp_path, 404)
@@ -206,12 +215,16 @@ async def test_poll_error_keeps_disk_backed_recently_worked_and_notification(db_
     assert "Poll error: network down" in notification_text
 
 
-async def test_refresh_preserves_cursor_by_ticket_id_when_live_order_changes(db_conn, tmp_path):
+async def test_refresh_preserves_cursor_by_ticket_id_when_live_order_changes(
+    db_conn, tmp_path
+):
     from noc_cli.tui.watch_app import TicketList
 
     first = [_ticket(1), _ticket(2)]
     second = [_ticket(2), _ticket(1)]
-    app = _make_app(_make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn)
+    )
 
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
@@ -228,7 +241,9 @@ async def test_refresh_preserves_cursor_by_ticket_id_when_live_order_changes(db_
 
 
 async def test_detail_shows_summary_for_worked_row(db_conn, tmp_path):
-    _write_state(tmp_path, 505, fork="C", confidence="Low", status="solved", owner="enrique")
+    _write_state(
+        tmp_path, 505, fork="C", confidence="Low", status="solved", owner="enrique"
+    )
     app = _make_app(_make_config(tmp_path), _FakeClient(), WatchState(db_conn))
 
     async with app.run_test(size=(120, 40)) as pilot:
@@ -242,7 +257,9 @@ async def test_detail_shows_summary_for_worked_row(db_conn, tmp_path):
 async def test_detail_shows_activity_for_queue_row_with_comment_body(db_conn, tmp_path):
     ticket = _ticket(606, subject="Low audio report", status="open")
     comments = {606: [_comment("Customer says audio is still low.")]}
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]], comments), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[ticket]], comments), WatchState(db_conn)
+    )
 
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
@@ -259,7 +276,9 @@ async def test_summary_after_triage_keeps_header_and_comments(db_conn, tmp_path)
     _write_state(tmp_path, 880, fork="B", status="pending")
     ticket = _ticket(880, subject="Dropped calls at PSAP", status="pending")
     comments = {880: [_comment("Customer says calls still dropping.")]}
-    app = _make_app(_make_config(tmp_path), _FakeClient([[ticket]], comments), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[ticket]], comments), WatchState(db_conn)
+    )
 
     async with app.run_test(size=(140, 40)) as pilot:
         await _poll(app, pilot)
@@ -362,8 +381,12 @@ async def test_investigate_runs_in_process_and_streams_phases(db_conn, tmp_path)
         on_line("Evidence gathered")
         return tmp_path / str(ticket_id)
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(808)]]), WatchState(db_conn))
-    with patch("noc_cli.investigate.run_investigation", side_effect=fake_run_investigation):
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(808)]]), WatchState(db_conn)
+    )
+    with patch(
+        "noc_cli.investigate.run_investigation", side_effect=fake_run_investigation
+    ):
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
             box = app.query_one("#command", Input)
@@ -378,7 +401,9 @@ async def test_investigate_runs_in_process_and_streams_phases(db_conn, tmp_path)
 
 
 async def test_investigate_is_single_flight(db_conn, tmp_path):
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(818)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(818)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         app._investigating_id = 818  # simulate in-flight
@@ -467,7 +492,9 @@ async def test_command_box_is_focused_and_routes_slash_refresh(db_conn, tmp_path
 
     first = [_ticket(601)]
     second = [_ticket(602)]
-    app = _make_app(_make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([first, second]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -484,7 +511,9 @@ async def test_command_box_is_focused_and_routes_slash_refresh(db_conn, tmp_path
 async def test_slash_open_routes_to_browser(db_conn, tmp_path):
     from textual.widgets import Input
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(909)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(909)]]), WatchState(db_conn)
+    )
     with patch("webbrowser.open") as mock_open:
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
@@ -498,7 +527,9 @@ async def test_slash_open_routes_to_browser(db_conn, tmp_path):
 async def test_help_lists_commands_in_detail(db_conn, tmp_path):
     from textual.widgets import Input
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -512,7 +543,11 @@ async def test_slash_copy_copies_current_detail(db_conn, tmp_path):
     from textual.widgets import Input
     from noc_cli.tui.watch_app import WatchApp
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1001, subject="No ANI")]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(1001, subject="No ANI")]]),
+        WatchState(db_conn),
+    )
     with patch.object(WatchApp, "copy_to_clipboard", autospec=True) as mock_copy:
         async with app.run_test(size=(120, 40)) as pilot:
             await _poll(app, pilot)
@@ -549,7 +584,11 @@ async def test_splash_shows_then_dissolves_on_first_poll(db_conn, tmp_path):
 
 
 async def test_tab_reaches_chat_view(db_conn, tmp_path):
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(700, subject="No ALI")]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(700, subject="No ALI")]]),
+        WatchState(db_conn),
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         await pilot.press("tab")  # Summary -> Chat (works on a NON-triaged row)
@@ -562,7 +601,9 @@ async def test_tab_reaches_chat_view(db_conn, tmp_path):
 
 
 async def test_second_chat_turn_blocked_while_one_in_flight(db_conn, tmp_path):
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         app._chatting_id = 500  # simulate a turn already in flight
@@ -579,17 +620,28 @@ async def test_escape_interrupts_active_chat(db_conn, tmp_path):
     interrupted = {"flag": False}
 
     class _SlowClient:
-        async def connect(self): return None
-        async def disconnect(self): return None
-        async def query(self, prompt): pass
+        async def connect(self):
+            return None
+
+        async def disconnect(self):
+            return None
+
+        async def query(self, prompt):
+            pass
+
         async def receive_response(self):
             class M:
                 result = "partial"
-            yield M()
-        async def interrupt(self): interrupted["flag"] = True
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn))
-    app._chat_client_factory = lambda folder: (lambda: _SlowClient())
+            yield M()
+
+        async def interrupt(self):
+            interrupted["flag"] = True
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(500)]]), WatchState(db_conn)
+    )
+    app._chat_client_factory = lambda folder: lambda: _SlowClient()
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -611,17 +663,30 @@ async def test_freeform_input_starts_chat_and_renders(db_conn, tmp_path):
     from textual.widgets import Input
 
     class _FakeChatClient:
-        async def connect(self): return None
-        async def disconnect(self): return None
-        async def query(self, prompt): self.p = prompt
+        async def connect(self):
+            return None
+
+        async def disconnect(self):
+            return None
+
+        async def query(self, prompt):
+            self.p = prompt
+
         async def receive_response(self):
             class M:
                 result = "Held in queue; ALI link timed out."
-            yield M()
-        async def interrupt(self): pass
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747, subject="stuck")]]), WatchState(db_conn))
-    app._chat_client_factory = lambda folder: (lambda: _FakeChatClient())  # inject fake
+            yield M()
+
+        async def interrupt(self):
+            pass
+
+    app = _make_app(
+        _make_config(tmp_path),
+        _FakeClient([[_ticket(45747, subject="stuck")]]),
+        WatchState(db_conn),
+    )
+    app._chat_client_factory = lambda folder: lambda: _FakeChatClient()  # inject fake
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -641,7 +706,9 @@ async def test_slash_file_attaches_evidence(db_conn, tmp_path):
 
     src = tmp_path / "pcap-excerpt.txt"
     src.write_text("SIP 200 OK\n")
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -656,7 +723,9 @@ async def test_slash_file_attaches_evidence(db_conn, tmp_path):
 async def test_slash_paste_attaches_evidence(db_conn, tmp_path):
     from textual.widgets import Input
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn))
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(45747)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         box = app.query_one("#command", Input)
@@ -664,7 +733,9 @@ async def test_slash_paste_attaches_evidence(db_conn, tmp_path):
         await box.action_submit()
         await pilot.pause()
         notification = app.query_one("#notification").content
-    assert (tmp_path / "45747" / "logs" / "paste-siptrace.txt").read_text() == "INVITE sip:911@psap"
+    assert (
+        tmp_path / "45747" / "logs" / "paste-siptrace.txt"
+    ).read_text() == "INVITE sip:911@psap"
     assert "attached" in notification.lower()
 
 
@@ -675,19 +746,33 @@ async def test_close_all_chat_sessions_disconnects_clients(db_conn, tmp_path):
     disconnected = {"flag": False}
 
     class _C:
-        async def connect(self): return None
-        async def disconnect(self): disconnected["flag"] = True
-        async def query(self, p): pass
-        async def receive_response(self):
-            class M: result = "ok"
-            yield M()
-        async def interrupt(self): pass
+        async def connect(self):
+            return None
 
-    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn))
+        async def disconnect(self):
+            disconnected["flag"] = True
+
+        async def query(self, p):
+            pass
+
+        async def receive_response(self):
+            class M:
+                result = "ok"
+
+            yield M()
+
+        async def interrupt(self):
+            pass
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         session = ChatSession(ticket_id=1, folder=tmp_path, client_factory=lambda: _C())
-        await session._ensure_client()  # create the (fake) client so close() will disconnect it
+        await (
+            session._ensure_client()
+        )  # create the (fake) client so close() will disconnect it
         app._chat_sessions[1] = session
         await app._close_all_chat_sessions()
     assert disconnected["flag"] is True

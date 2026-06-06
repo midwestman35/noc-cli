@@ -35,7 +35,9 @@ def test_build_scout_options_builds_hooks_once(tmp_path, monkeypatch):
     real = harness.build_hooks
 
     def recording(sandbox_root, events_path, *, restrict_read_tools=False):
-        calls.append({"sandbox_root": sandbox_root, "restrict_read_tools": restrict_read_tools})
+        calls.append(
+            {"sandbox_root": sandbox_root, "restrict_read_tools": restrict_read_tools}
+        )
         return real(sandbox_root, events_path, restrict_read_tools=restrict_read_tools)
 
     monkeypatch.setattr(harness, "build_hooks", recording)

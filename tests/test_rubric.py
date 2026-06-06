@@ -11,9 +11,7 @@ def test_load_rubric_has_version_and_text():
 
 def test_contains_row_matches_verbatim_substring():
     r = load_rubric()
-    assert r.contains_row(
-        "customer LAN, switch, or SDWAN. Link to site master ticket"
-    )
+    assert r.contains_row("customer LAN, switch, or SDWAN. Link to site master ticket")
 
 
 def test_contains_row_rejects_unknown_and_empty():
@@ -35,4 +33,6 @@ def test_contains_row_accepts_extra_texts():
     r = load_rubric()
     needle = "RTP present, timestamps healthy"
     assert not r.contains_row(needle, extra_texts=[])
-    assert r.contains_row(needle, extra_texts=["... RTP present, timestamps healthy ..."])
+    assert r.contains_row(
+        needle, extra_texts=["... RTP present, timestamps healthy ..."]
+    )

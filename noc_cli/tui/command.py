@@ -1,4 +1,5 @@
 """Pure parser for the input-first command box (no Textual import)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,5 +35,7 @@ def parse_input(text: str) -> ParsedCommand:
     if stripped.startswith("/"):
         body = stripped[1:].lstrip()
         name, _, args = body.partition(" ")
-        return ParsedCommand(raw=text, is_command=True, name=name.lower(), args=args.strip())
+        return ParsedCommand(
+            raw=text, is_command=True, name=name.lower(), args=args.strip()
+        )
     return ParsedCommand(raw=text, is_command=False, name="", args=stripped)

@@ -61,7 +61,9 @@ def test_synthesize_falls_back_to_confidence_order_on_garbage():
 
 def test_synthesize_empty_reports_returns_empty():
     report = _run(
-        synthesize([], query_fn=_fake_query("{}"), now=NOW, options_factory=lambda: None)
+        synthesize(
+            [], query_fn=_fake_query("{}"), now=NOW, options_factory=lambda: None
+        )
     )
 
     assert report.ranked == []

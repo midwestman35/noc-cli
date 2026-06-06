@@ -36,7 +36,9 @@ def _sample_transcript():
 def test_consulted_runbook_slugs_only_counts_read_events():
     transcript = [
         TranscriptEntry(kind="tool", tool_name="Grep", tool_args="runbooks/apex.md"),
-        TranscriptEntry(kind="tool", tool_name="Glob", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(
+            kind="tool", tool_name="Glob", tool_args="runbooks/low-audio.md"
+        ),
         TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/no-ani.md"),
     ]
 
@@ -46,7 +48,13 @@ def test_consulted_runbook_slugs_only_counts_read_events():
 def test_all_five_files_created(tmp_path):
     folder = scaffold_ticket(tmp_path, 18432)
     render_handoff(load_good(), folder)
-    for name in ("INTAKE.md", "EVIDENCE_PREFLIGHT.md", "FORK_PACKET.md", "DRAFTS.md", "STATE.md"):
+    for name in (
+        "INTAKE.md",
+        "EVIDENCE_PREFLIGHT.md",
+        "FORK_PACKET.md",
+        "DRAFTS.md",
+        "STATE.md",
+    ):
         assert (folder.root / name).exists(), f"{name} missing"
 
 
@@ -155,10 +163,22 @@ def test_render_is_atomic_on_failure(tmp_path):
     """Existing files must not be partially written; verify none exist before
     render and all exist after a successful render."""
     folder = scaffold_ticket(tmp_path, 18432)
-    for name in ("INTAKE.md", "EVIDENCE_PREFLIGHT.md", "FORK_PACKET.md", "DRAFTS.md", "STATE.md"):
+    for name in (
+        "INTAKE.md",
+        "EVIDENCE_PREFLIGHT.md",
+        "FORK_PACKET.md",
+        "DRAFTS.md",
+        "STATE.md",
+    ):
         assert not (folder.root / name).exists()
     render_handoff(load_good(), folder)
-    for name in ("INTAKE.md", "EVIDENCE_PREFLIGHT.md", "FORK_PACKET.md", "DRAFTS.md", "STATE.md"):
+    for name in (
+        "INTAKE.md",
+        "EVIDENCE_PREFLIGHT.md",
+        "FORK_PACKET.md",
+        "DRAFTS.md",
+        "STATE.md",
+    ):
         assert (folder.root / name).exists()
 
 
@@ -235,7 +255,9 @@ def test_state_md_includes_consulted_and_warnings(tmp_path):
 def test_reasoning_and_state_include_pivot_indicator(tmp_path):
     folder = scaffold_ticket(tmp_path, 18443)
     transcript = [
-        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(
+            kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"
+        ),
     ]
     handoff = load_pivot()
 
@@ -264,7 +286,9 @@ def test_seed_to_final_tag_change_marks_pivoted(tmp_path):
         },
     )
     transcript = [
-        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
+        TranscriptEntry(
+            kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"
+        ),
         TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/apex.md"),
     ]
 
@@ -277,9 +301,15 @@ def test_seed_to_final_tag_change_marks_pivoted(tmp_path):
 def test_render_reasoning_surfaces_pivot_fixture(tmp_path):
     folder = scaffold_ticket(tmp_path, 18443)
     transcript = [
-        TranscriptEntry(kind="reasoning", text="Accepting analyst hypothesis [low audio]."),
-        TranscriptEntry(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"),
-        TranscriptEntry(kind="reasoning", text="RTP is healthy; pivoting away from media."),
+        TranscriptEntry(
+            kind="reasoning", text="Accepting analyst hypothesis [low audio]."
+        ),
+        TranscriptEntry(
+            kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"
+        ),
+        TranscriptEntry(
+            kind="reasoning", text="RTP is healthy; pivoting away from media."
+        ),
     ]
 
     render_reasoning(transcript, load_pivot(), folder)

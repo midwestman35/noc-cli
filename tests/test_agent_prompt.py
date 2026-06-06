@@ -1,4 +1,8 @@
-from noc_cli.agent.prompt import APPROVED_TAGS_IN_PROMPT, SYSTEM_PROMPT, build_system_prompt
+from noc_cli.agent.prompt import (
+    APPROVED_TAGS_IN_PROMPT,
+    SYSTEM_PROMPT,
+    build_system_prompt,
+)
 from noc_cli.rubric import load_rubric
 from noc_cli.runbooks import RUNBOOK_SLUGS
 
@@ -25,7 +29,9 @@ def test_system_prompt_contains_inconclusive_preference():
 
 def test_system_prompt_contains_read_only_constraint():
     lower = SYSTEM_PROMPT.lower()
-    assert "read" in lower and ("only" in lower or "no write" in lower or "never write" in lower)
+    assert "read" in lower and (
+        "only" in lower or "no write" in lower or "never write" in lower
+    )
 
 
 def test_system_prompt_contains_json_contract():

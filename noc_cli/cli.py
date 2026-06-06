@@ -1,4 +1,5 @@
 """noc-cli command-line interface — thin Typer shims over the logic modules."""
+
 from __future__ import annotations
 
 import asyncio
@@ -182,7 +183,9 @@ def investigate(
     paste: list[str] = typer.Option(
         [], "--paste", help="Inline text as LABEL=TEXT (repeatable)"
     ),
-    force: bool = typer.Option(False, "--force", help="Override the STATE.md soft-lock"),
+    force: bool = typer.Option(
+        False, "--force", help="Override the STATE.md soft-lock"
+    ),
     fixture: Optional[Path] = typer.Option(
         None,
         "--fixture",
@@ -257,7 +260,9 @@ async def _run_investigate(
         root = await run_investigation(
             ticket_id=ticket_id,
             config=cfg,
-            tickets_root=Path(os.environ.get("NOC_TICKETS_ROOT", str(cfg.tickets_root))),
+            tickets_root=Path(
+                os.environ.get("NOC_TICKETS_ROOT", str(cfg.tickets_root))
+            ),
             owner=owner,
             initial_hypothesis=initial_hypothesis,
             extra_files=extra_files,

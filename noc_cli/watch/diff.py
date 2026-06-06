@@ -36,7 +36,10 @@ def _latest_public_requester_comment(
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda c: c.created_at or datetime.min.replace(tzinfo=timezone.utc))
+    return max(
+        candidates,
+        key=lambda c: c.created_at or datetime.min.replace(tzinfo=timezone.utc),
+    )
 
 
 def _latest_public_comment(comments: list[Comment]) -> Comment | None:
@@ -44,7 +47,9 @@ def _latest_public_comment(comments: list[Comment]) -> Comment | None:
     public = [c for c in comments if c.public]
     if not public:
         return None
-    return max(public, key=lambda c: c.created_at or datetime.min.replace(tzinfo=timezone.utc))
+    return max(
+        public, key=lambda c: c.created_at or datetime.min.replace(tzinfo=timezone.utc)
+    )
 
 
 def _iso(dt: datetime | None) -> str:
@@ -83,10 +88,16 @@ def diff_tickets(
         latest_public = _latest_public_comment(comments)
         latest_public_ts = _iso(latest_public.created_at if latest_public else None)
 
-        latest_requester = _latest_public_requester_comment(comments, ticket.requester_id)
-        latest_requester_ts = _iso(latest_requester.created_at if latest_requester else None)
+        latest_requester = _latest_public_requester_comment(
+            comments, ticket.requester_id
+        )
+        latest_requester_ts = _iso(
+            latest_requester.created_at if latest_requester else None
+        )
 
-        current_snap = TicketSnapshot(status=ticket.status, last_comment_at=latest_public_ts)
+        current_snap = TicketSnapshot(
+            status=ticket.status, last_comment_at=latest_public_ts
+        )
 
         if ticket.id not in last_seen:
             seeds[ticket.id] = current_snap

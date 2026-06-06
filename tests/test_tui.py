@@ -24,7 +24,16 @@ def test_phase_tracker_mark_done_renders():
 
 def test_all_investigate_phases_defined():
     phase_names = {p.value for p in InvestigatePhase}
-    required = {"fetch", "scaffold", "gather", "redact", "history", "agent", "render", "done"}
+    required = {
+        "fetch",
+        "scaffold",
+        "gather",
+        "redact",
+        "history",
+        "agent",
+        "render",
+        "done",
+    }
     assert required.issubset(phase_names)
 
 

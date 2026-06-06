@@ -16,7 +16,9 @@ class _FakeClient:
 
 
 def _ticket(tid: int, *, assignee_id: int | None = 42, status: str = "open") -> Ticket:
-    return Ticket(id=tid, subject=f"Ticket {tid}", status=status, assignee_id=assignee_id)
+    return Ticket(
+        id=tid, subject=f"Ticket {tid}", status=status, assignee_id=assignee_id
+    )
 
 
 def test_poll_view_returns_all_tickets_when_no_assignee_filter():

@@ -84,7 +84,9 @@ Intro text.
     assert summary.master is None
 
 
-def test_parse_state_md_returns_none_for_missing_no_frontmatter_and_bad_scalars(tmp_path):
+def test_parse_state_md_returns_none_for_missing_no_frontmatter_and_bad_scalars(
+    tmp_path,
+):
     missing = tmp_path / "missing" / "STATE.md"
     assert parse_state_md(missing) is None
 
@@ -126,7 +128,9 @@ def test_scan_investigations_returns_empty_for_missing_root(tmp_path):
     assert scan_investigations(tmp_path / "Tickets") == []
 
 
-def test_scan_investigations_walks_numeric_direct_subdirs_and_skips_missing_or_bad_files(tmp_path):
+def test_scan_investigations_walks_numeric_direct_subdirs_and_skips_missing_or_bad_files(
+    tmp_path,
+):
     valid = tmp_path / "44999"
     valid.mkdir()
     (valid / "STATE.md").write_text(FULL_STATE)

@@ -20,6 +20,7 @@ SYNTHESIS_SYSTEM_PROMPT = (
     "resolution."
 )
 
+
 def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
     ordered = sorted(
         reports,
@@ -30,7 +31,8 @@ def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
         RankedCandidate(
             ticket_id=report.ticket_id,
             rank=i + 1,
-            rationale=report.one_line or "(synthesis unavailable; ranked by confidence)",
+            rationale=report.one_line
+            or "(synthesis unavailable; ranked by confidence)",
             runbook_id=report.runbook_id,
             runbook_match_confidence=report.runbook_match_confidence,
             missing_evidence=report.missing_evidence,

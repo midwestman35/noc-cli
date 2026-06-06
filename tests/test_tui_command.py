@@ -29,5 +29,17 @@ def test_blank_input_is_freeform_empty():
 
 
 def test_known_commands_cover_the_spec_set():
-    assert {"investigate", "scout", "doctor", "help", "refresh",
-            "copy", "open", "quit", "file", "paste", "revise", "retry"} <= set(KNOWN_COMMANDS)
+    assert {
+        "investigate",
+        "scout",
+        "doctor",
+        "help",
+        "refresh",
+        "copy",
+        "open",
+        "quit",
+        "file",
+        "paste",
+        "revise",
+        "retry",
+    } <= set(KNOWN_COMMANDS)

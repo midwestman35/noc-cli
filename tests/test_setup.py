@@ -46,8 +46,8 @@ def test_build_env_lines_produces_key_equals_value_pairs():
 def test_build_env_lines_skips_empty_values():
     answers = {
         "ZENDESK_SUBDOMAIN": "carbyne",
-        "NOC_WATCH_VIEW": "",        # optional — not yet configured
-        "NOC_WATCH_ASSIGNEE": "",    # optional — not yet configured
+        "NOC_WATCH_VIEW": "",  # optional — not yet configured
+        "NOC_WATCH_ASSIGNEE": "",  # optional — not yet configured
     }
     lines = build_env_lines(answers)
     assert "ZENDESK_SUBDOMAIN=carbyne" in lines
@@ -108,16 +108,18 @@ def test_run_setup_writes_env_file_from_answers(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     existing = _make_config()
 
-    answers = iter([
-        "carbyne",                    # Zendesk subdomain
-        "alice@carbyne.com",          # Zendesk email
-        "tok-secret",                 # Zendesk API token
-        str(tmp_path / "Tickets"),    # NOC_TICKETS_ROOT
-        "alice",                      # NOC_OWNER
-        "777",                        # NOC_WATCH_VIEW
-        "alice@carbyne.com",          # NOC_WATCH_ASSIGNEE
-        "banner,ping",                # NOC_NOTIFY
-    ])
+    answers = iter(
+        [
+            "carbyne",  # Zendesk subdomain
+            "alice@carbyne.com",  # Zendesk email
+            "tok-secret",  # Zendesk API token
+            str(tmp_path / "Tickets"),  # NOC_TICKETS_ROOT
+            "alice",  # NOC_OWNER
+            "777",  # NOC_WATCH_VIEW
+            "alice@carbyne.com",  # NOC_WATCH_ASSIGNEE
+            "banner,ping",  # NOC_NOTIFY
+        ]
+    )
 
     def fake_prompt(label: str, default: str = "", hide_input: bool = False) -> str:
         return next(answers)
@@ -158,12 +160,12 @@ def test_run_setup_uses_existing_values_as_defaults(tmp_path, monkeypatch):
 
     run_setup(env_path, existing, prompt_fn=capture_default)
 
-    assert defaults_received[0] == "prevdomain"     # subdomain default
-    assert defaults_received[1] == "prev@x.com"     # email default
+    assert defaults_received[0] == "prevdomain"  # subdomain default
+    assert defaults_received[1] == "prev@x.com"  # email default
     # index 2 is the token — hide_input=True; default still provided but masked
-    assert defaults_received[4] == "bob"             # owner default
-    assert defaults_received[5] == "999"             # watch_view default
-    assert defaults_received[6] == "prev@x.com"     # watch_assignee default
+    assert defaults_received[4] == "bob"  # owner default
+    assert defaults_received[5] == "999"  # watch_view default
+    assert defaults_received[6] == "prev@x.com"  # watch_assignee default
 
     text = env_path.read_text()
     assert "ZENDESK_SUBDOMAIN=prevdomain" in text
@@ -175,12 +177,18 @@ def test_run_setup_creates_data_dir_if_missing(tmp_path, monkeypatch):
     env_path = nested / ".env"
     existing = _make_config()
 
-    answers = iter([
-        "carbyne", "a@b.com", "tok",
-        str(tmp_path / "Tickets"), "alice",
-        "", "",          # watch_view and watch_assignee left blank (optional)
-        "banner,ping",
-    ])
+    answers = iter(
+        [
+            "carbyne",
+            "a@b.com",
+            "tok",
+            str(tmp_path / "Tickets"),
+            "alice",
+            "",
+            "",  # watch_view and watch_assignee left blank (optional)
+            "banner,ping",
+        ]
+    )
 
     def fake_prompt(label: str, default: str = "", hide_input: bool = False) -> str:
         return next(answers)
@@ -195,13 +203,18 @@ def test_run_setup_omits_blank_optional_watch_fields(tmp_path, monkeypatch):
     env_path = tmp_path / ".env"
     existing = _make_config()
 
-    answers = iter([
-        "carbyne", "a@b.com", "tok",
-        str(tmp_path / "Tickets"), "alice",
-        "",   # watch_view blank
-        "",   # watch_assignee blank
-        "banner,ping",
-    ])
+    answers = iter(
+        [
+            "carbyne",
+            "a@b.com",
+            "tok",
+            str(tmp_path / "Tickets"),
+            "alice",
+            "",  # watch_view blank
+            "",  # watch_assignee blank
+            "banner,ping",
+        ]
+    )
 
     def fake_prompt(label: str, default: str = "", hide_input: bool = False) -> str:
         return next(answers)

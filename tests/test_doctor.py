@@ -99,7 +99,9 @@ def test_tickets_dir_writable_returns_fail_when_mkdir_raises(tmp_path, monkeypat
 
 
 def test_claude_engine_ok_when_which_returns_path(monkeypatch):
-    monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/claude")
+    monkeypatch.setattr(
+        "noc_cli.doctor.shutil.which", lambda name: "/usr/local/bin/claude"
+    )
     result = check_claude_engine()
     assert result.ok is True
     assert "/usr/local/bin/claude" in result.message
@@ -117,7 +119,9 @@ def test_claude_engine_fails_when_which_returns_none(monkeypatch):
 
 def test_notification_ok_when_terminal_notifier_present(monkeypatch):
     def fake_which(name: str) -> str | None:
-        return "/usr/local/bin/terminal-notifier" if name == "terminal-notifier" else None
+        return (
+            "/usr/local/bin/terminal-notifier" if name == "terminal-notifier" else None
+        )
 
     monkeypatch.setattr("noc_cli.doctor.shutil.which", fake_which)
     result = check_notification_capability()
@@ -178,7 +182,12 @@ def test_print_report_returns_0_when_all_critical_pass(tmp_path, monkeypatch):
 
 def test_print_report_returns_1_when_credentials_missing(tmp_path, monkeypatch):
     monkeypatch.setattr("noc_cli.doctor.shutil.which", lambda name: "/usr/bin/fake")
-    cfg = _cfg(zendesk_subdomain="", zendesk_email="", zendesk_api_token="", tickets_root=tmp_path)
+    cfg = _cfg(
+        zendesk_subdomain="",
+        zendesk_email="",
+        zendesk_api_token="",
+        tickets_root=tmp_path,
+    )
     results = run_checks(cfg, zd_factory=None)
     console = Console(record=True)
     code = print_report(results, console=console)
@@ -225,7 +234,10 @@ def test_check_zendesk_live_auth_returns_fail_on_auth_error():
     def bad_factory(cfg: Config) -> object:
         class FakeClient:
             def get_ticket(self, _id: int) -> None:
-                raise ZendeskError("Zendesk auth failed - check ZENDESK_EMAIL and ZENDESK_API_TOKEN.")
+                raise ZendeskError(
+                    "Zendesk auth failed - check ZENDESK_EMAIL and ZENDESK_API_TOKEN."
+                )
+
         return FakeClient()
 
     result = check_zendesk_live_auth(_cfg(), zd_factory=bad_factory)
@@ -238,6 +250,7 @@ def test_check_zendesk_live_auth_returns_ok_on_404():
         class FakeClient:
             def get_ticket(self, _id: int) -> None:
                 raise Exception("404 Not Found")
+
         return FakeClient()
 
     result = check_zendesk_live_auth(_cfg(), zd_factory=not_found_factory)
@@ -250,6 +263,7 @@ def test_check_zendesk_live_auth_returns_ok_on_success():
         class FakeClient:
             def get_ticket(self, _id: int) -> object:
                 return object()  # any non-exception result
+
         return FakeClient()
 
     result = check_zendesk_live_auth(_cfg(), zd_factory=success_factory)

@@ -22,7 +22,13 @@ from noc_cli.tui.chat import ChatSession, build_sdk_client_factory
 from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
-from noc_cli.watch.diff import ChangeEvent, ChangeKind, _iso, _latest_public_comment, diff_tickets
+from noc_cli.watch.diff import (
+    ChangeEvent,
+    ChangeKind,
+    _iso,
+    _latest_public_comment,
+    diff_tickets,
+)
 from noc_cli.watch.disk_scan import scan_investigations
 from noc_cli.watch.inbox import (
     INVESTIGATE_PHASES,
@@ -255,9 +261,7 @@ class TicketList(Static, can_focus=True):
         self._render_rows()
         return previous_id != self.selected_ticket_id
 
-    def update_decorations(
-        self, unread_ids: set[int], pulse_ids: set[int]
-    ) -> None:
+    def update_decorations(self, unread_ids: set[int], pulse_ids: set[int]) -> None:
         """Repaint badge/pulse state without re-scanning disk or live tickets.
 
         Used for pulse expiry and clear-on-select, where the rows themselves are
@@ -372,10 +376,14 @@ class WatchApp(App[None]):
         Binding("up", "cursor_up", "Up", show=False, priority=True),
         Binding("down", "cursor_down", "Down", show=False, priority=True),
         Binding("tab", "next_detail_file", "Next view", show=True, priority=True),
-        Binding("shift+tab", "previous_detail_file", "Prev view", show=True, priority=True),
+        Binding(
+            "shift+tab", "previous_detail_file", "Prev view", show=True, priority=True
+        ),
         Binding("escape", "interrupt", "Interrupt", show=True, priority=True),
         Binding("pageup", "scroll_detail_up", "Scroll up", show=False, priority=True),
-        Binding("pagedown", "scroll_detail_down", "Scroll down", show=False, priority=True),
+        Binding(
+            "pagedown", "scroll_detail_down", "Scroll down", show=False, priority=True
+        ),
         Binding("ctrl+c", "quit", "Quit", show=True, priority=True),
     ]
 
@@ -457,7 +465,10 @@ class WatchApp(App[None]):
                 yield Static("", id="detail-tablabel", markup=False)
                 with DetailPane(id="detail"):
                     yield Static("", id="detail-content", markup=False)
-        yield Input(placeholder="ask about the selected ticket, or /investigate /scout /help…", id="command")
+        yield Input(
+            placeholder="ask about the selected ticket, or /investigate /scout /help…",
+            id="command",
+        )
         yield Footer()
         yield Static(self._splash_text(), id="splash", markup=False)
 
@@ -471,7 +482,11 @@ class WatchApp(App[None]):
         self.set_interval(0.1, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
-        busy = self._polling or self._investigating_id is not None or self._chatting_id is not None
+        busy = (
+            self._polling
+            or self._investigating_id is not None
+            or self._chatting_id is not None
+        )
         if busy:
             self._spinner_frame = (self._spinner_frame + 1) % len(_BRAILLE)
             if self._polling:
@@ -526,7 +541,9 @@ class WatchApp(App[None]):
 
         if self._assignee_resolved:
             return self._assignee_id
-        email = (self._config.watch_assignee or self._config.zendesk_email or "").strip()
+        email = (
+            self._config.watch_assignee or self._config.zendesk_email or ""
+        ).strip()
         try:
             self._assignee_id = self._client.find_user_id(email) if email else None
         except ZendeskError:
@@ -550,7 +567,9 @@ class WatchApp(App[None]):
                 ticket.comments = comments
                 comments_map[ticket.id] = comments
 
-            events, seeds = diff_tickets(tickets, comments_map, last_seen, return_seeds=True)
+            events, seeds = diff_tickets(
+                tickets, comments_map, last_seen, return_seeds=True
+            )
             snapshots: dict[int, TicketSnapshot] = {}
             for ticket in tickets:
                 latest = _latest_public_comment(comments_map.get(ticket.id, []))
@@ -609,7 +628,9 @@ class WatchApp(App[None]):
         ticket_list = self.query_one("#ticket-list", TicketList)
         previous_id = ticket_list.selected_ticket_id
         now = datetime.now(tz=timezone.utc)
-        worked, queue = build_segments(self._scan_disk(), live_tickets, now=now, window_days=3)
+        worked, queue = build_segments(
+            self._scan_disk(), live_tickets, now=now, window_days=3
+        )
         selection_changed = ticket_list.set_segments(
             worked,
             queue,
@@ -670,7 +691,9 @@ class WatchApp(App[None]):
             elif row.ticket is not None:
                 text.append(render_activity(row.ticket, tz=self._config.timezone))
             else:
-                text.append(f"Ticket: ZD-{row.ticket_id}\n\nNo live activity available.")
+                text.append(
+                    f"Ticket: ZD-{row.ticket_id}\n\nNo live activity available."
+                )
             # Comments are live: poll_view re-fetches ticket.comments each cycle
             # and _rebuild_rows calls back into here, so a new comment repaints
             # the thread (newest at the bottom) and the header status with no
@@ -856,7 +879,9 @@ class WatchApp(App[None]):
     def _current_pulse_ids(self) -> set[int]:
         """Ids whose pulse window has not yet elapsed (phase-independent)."""
         now_mono = time.monotonic()
-        return {tid for tid, deadline in self._pulse_until.items() if deadline > now_mono}
+        return {
+            tid for tid, deadline in self._pulse_until.items() if deadline > now_mono
+        }
 
     def _schedule_pulse_clear(self) -> None:
         # Tradeoff: the whole list is one Static / one Text, so a pulse is a
@@ -1160,7 +1185,9 @@ class WatchApp(App[None]):
         label, _, body = arg.partition("=")
         folder = scaffold_ticket(self._tickets_root(), row.ticket_id)
         gather_evidence(
-            folder=folder, zendesk_attachments=[], extra_files=[],
+            folder=folder,
+            zendesk_attachments=[],
+            extra_files=[],
             pastes=[PasteInput(label=label.strip(), text=body)],
         )
         self._set_notification(f"Attached paste '{label.strip()}' as evidence.")
@@ -1206,7 +1233,9 @@ class WatchApp(App[None]):
         for cmd, desc in KNOWN_COMMANDS.items():
             lines.append(f"  /{cmd:<12} {desc}")
         lines.append("")
-        lines.append("Anything without a leading / is a chat turn about the selected ticket.")
+        lines.append(
+            "Anything without a leading / is a chat turn about the selected ticket."
+        )
         self._set_detail_text("\n".join(lines))
 
     def _run_doctor(self) -> None:

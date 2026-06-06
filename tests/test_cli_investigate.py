@@ -35,7 +35,13 @@ def test_investigate_fixture_produces_five_files(tmp_path, monkeypatch):
     result = runner.invoke(app, ["investigate", "18432", "--fixture", str(FIXTURES)])
     assert result.exit_code == 0, result.output
     ticket_dir = tmp_path / "18432"
-    for name in ("INTAKE.md", "EVIDENCE_PREFLIGHT.md", "FORK_PACKET.md", "DRAFTS.md", "STATE.md"):
+    for name in (
+        "INTAKE.md",
+        "EVIDENCE_PREFLIGHT.md",
+        "FORK_PACKET.md",
+        "DRAFTS.md",
+        "STATE.md",
+    ):
         assert (ticket_dir / name).exists(), f"{name} not rendered"
 
 
@@ -43,7 +49,9 @@ def test_investigate_fixture_fork_invariant(tmp_path, monkeypatch):
     _base_env(monkeypatch, tmp_path)
     runner.invoke(app, ["investigate", "18432", "--fixture", str(FIXTURES)])
     state = (tmp_path / "18432" / "STATE.md").read_text()
-    assert any(f'fork: "{letter}"' in state or f"fork: {letter}" in state for letter in "ABCD")
+    assert any(
+        f'fork: "{letter}"' in state or f"fork: {letter}" in state for letter in "ABCD"
+    )
 
 
 def test_investigate_fixture_symptom_tag_invariant(tmp_path, monkeypatch):
@@ -82,7 +90,9 @@ def test_redact_skips_binary_attachment(tmp_path, monkeypatch):
     fake_pdf = tmp_path / "report.pdf"
     fake_pdf.write_bytes(binary)
 
-    result = runner.invoke(app, ["investigate", "18432", "--no-agent", "--file", str(fake_pdf)])
+    result = runner.invoke(
+        app, ["investigate", "18432", "--no-agent", "--file", str(fake_pdf)]
+    )
     assert result.exit_code == 0, result.output
 
     written = (tmp_path / "18432" / "logs" / "report.pdf").read_bytes()
@@ -103,13 +113,17 @@ def test_investigate_fixture_works_without_zendesk_creds(tmp_path, monkeypatch):
 
 def test_investigate_invalid_suspect_exits_2(tmp_path, monkeypatch):
     _base_env(monkeypatch, tmp_path)
-    result = runner.invoke(app, ["investigate", "18432", "--no-agent", "--suspect", "bogus"])
+    result = runner.invoke(
+        app, ["investigate", "18432", "--no-agent", "--suspect", "bogus"]
+    )
     assert result.exit_code == 2, result.output
 
 
 def test_investigate_valid_suspect_no_agent_ok(tmp_path, monkeypatch):
     _base_env(monkeypatch, tmp_path)
-    result = runner.invoke(app, ["investigate", "18432", "--no-agent", "--suspect", "low-audio"])
+    result = runner.invoke(
+        app, ["investigate", "18432", "--no-agent", "--suspect", "low-audio"]
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -157,7 +171,9 @@ def _load_good_handoff():
 
     from noc_cli.models import Handoff
 
-    return Handoff.model_validate(json.loads((FIXTURES / "handoff_good.json").read_text()))
+    return Handoff.model_validate(
+        json.loads((FIXTURES / "handoff_good.json").read_text())
+    )
 
 
 def _patch_live_investigate_deps(monkeypatch, captured, handoff=None):
@@ -196,7 +212,11 @@ def _patch_live_investigate_deps(monkeypatch, captured, handoff=None):
         captured["run_agent"] = kwargs
         return SimpleNamespace(
             handoff=handoff,
-            transcript=[SimpleNamespace(kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md")],
+            transcript=[
+                SimpleNamespace(
+                    kind="tool", tool_name="Read", tool_args="runbooks/low-audio.md"
+                )
+            ],
             stash_path=None,
         )
 
@@ -212,26 +232,40 @@ def _patch_live_investigate_deps(monkeypatch, captured, handoff=None):
         captured["render_handoff"] = (handoff_arg, folder, owner, kwargs)
 
     def fake_render_reasoning(transcript, handoff_arg, folder):
-        captured.setdefault("render_reasoning", []).append((transcript, handoff_arg, folder))
+        captured.setdefault("render_reasoning", []).append(
+            (transcript, handoff_arg, folder)
+        )
 
     monkeypatch.setattr("noc_cli.zendesk.ZendeskClient", FakeZD)
     monkeypatch.setattr("noc_cli.history.seed_history", fake_seed_history)
     monkeypatch.setattr(
         "noc_cli.rubric.load_rubric",
-        lambda: SimpleNamespace(text="RUBRIC_FULL_SENTINEL", core="RUBRIC_CORE_SENTINEL"),
+        lambda: SimpleNamespace(
+            text="RUBRIC_FULL_SENTINEL", core="RUBRIC_CORE_SENTINEL"
+        ),
     )
-    monkeypatch.setattr("noc_cli.agent.prompt.build_system_prompt", fake_build_system_prompt)
+    monkeypatch.setattr(
+        "noc_cli.agent.prompt.build_system_prompt", fake_build_system_prompt
+    )
     monkeypatch.setattr("noc_cli.agent.runner.run_agent", fake_run_agent)
 
     import noc_cli.render as render
 
-    monkeypatch.setattr(render, "consulted_runbook_slugs", fake_consulted_runbook_slugs, raising=False)
-    monkeypatch.setattr(render, "validation_warnings", fake_validation_warnings, raising=False)
+    monkeypatch.setattr(
+        render, "consulted_runbook_slugs", fake_consulted_runbook_slugs, raising=False
+    )
+    monkeypatch.setattr(
+        render, "validation_warnings", fake_validation_warnings, raising=False
+    )
     monkeypatch.setattr(render, "render_handoff", fake_render_handoff)
-    monkeypatch.setattr(render, "render_reasoning", fake_render_reasoning, raising=False)
+    monkeypatch.setattr(
+        render, "render_reasoning", fake_render_reasoning, raising=False
+    )
 
 
-def test_run_investigate_wires_seed_prompt_history_agent_and_render(monkeypatch, tmp_path):
+def test_run_investigate_wires_seed_prompt_history_agent_and_render(
+    monkeypatch, tmp_path
+):
     _base_env(monkeypatch, tmp_path)
     captured: dict[str, object] = {}
     _patch_live_investigate_deps(monkeypatch, captured)
@@ -308,7 +342,9 @@ def test_run_investigate_history_seed_falls_back_to_unclassified(monkeypatch, tm
     assert captured["history_tags"] == ["[unclassified]"]
 
 
-def test_run_investigate_renders_reasoning_on_agent_parse_failure(monkeypatch, tmp_path):
+def test_run_investigate_renders_reasoning_on_agent_parse_failure(
+    monkeypatch, tmp_path
+):
     _base_env(monkeypatch, tmp_path)
     captured: dict[str, object] = {}
     _patch_live_investigate_deps(monkeypatch, captured)
