@@ -109,9 +109,9 @@ def residual_pii_warning(redacted: str, counts: RedactionCounts) -> str | None:
     self-trigger this scan."""
     if not counts.enabled:
         return None
-    residual = _count_non_overlapping(_RESIDUAL_COORD, redacted, 1) + _count_non_overlapping(
-        _RESIDUAL_LOCAL_PHONE, redacted, 1
-    )
+    residual = _count_non_overlapping(
+        _RESIDUAL_COORD, redacted, 1
+    ) + _count_non_overlapping(_RESIDUAL_LOCAL_PHONE, redacted, 1)
     if residual >= RESIDUAL_PII_WARN_THRESHOLD:
         return (
             f"redaction: {residual} residual caller-PII-shaped token(s) survived "

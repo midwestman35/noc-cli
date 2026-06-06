@@ -1,4 +1,5 @@
-from noc_cli.agent.tools import run_history_search
+from noc_cli.agent.tools import build_mcp_servers, run_history_search
+from noc_cli.config import Config
 from noc_cli.memory import InvestigationRecord, MemoryStore, append_investigation
 
 
@@ -8,12 +9,17 @@ class _FakeZd:
 
 
 def test_run_history_search_returns_redacted_candidates(tmp_path):
-    store = MemoryStore(db_path=tmp_path / "m.db", memory_md_path=tmp_path / "MEMORY.md")
+    store = MemoryStore(
+        db_path=tmp_path / "m.db", memory_md_path=tmp_path / "MEMORY.md"
+    )
     store.init()
     append_investigation(
         store,
         InvestigationRecord(
-            ticket_id="500", symptom_tag="[apex]", fork_letter="A", confidence="High",
+            ticket_id="500",
+            symptom_tag="[apex]",
+            fork_letter="A",
+            confidence="High",
             one_line_fingerprint="apex outage at 37.7749, -122.4194",
             summary="apex node down",
         ),
@@ -24,14 +30,14 @@ def test_run_history_search_returns_redacted_candidates(tmp_path):
     assert any("<COORDS>" in s for s in subjects)  # fingerprint coords scrubbed
 
 
-from noc_cli.agent.tools import build_mcp_servers
-from noc_cli.config import Config
-
-
 def test_build_mcp_servers_hybrid_shape(tmp_path):
-    store = MemoryStore(db_path=tmp_path / "m.db", memory_md_path=tmp_path / "MEMORY.md")
+    store = MemoryStore(
+        db_path=tmp_path / "m.db", memory_md_path=tmp_path / "MEMORY.md"
+    )
     store.init()
-    config = Config(zendesk_subdomain="acme", zendesk_email="a@b.co", zendesk_api_token="tok")
+    config = Config(
+        zendesk_subdomain="acme", zendesk_email="a@b.co", zendesk_api_token="tok"
+    )
     servers, allowed = build_mcp_servers(config, store, _zendesk_client=_FakeZd())
 
     # zendesk = external stdio process carrying scoped creds

@@ -47,8 +47,7 @@ class ReportViewport:
             from textual.widgets import Markdown, TabbedContent, TabPane
         except ImportError as exc:
             raise RuntimeError(
-                "textual is required for the report viewport. "
-                "Run: uv add textual"
+                "textual is required for the report viewport. Run: uv add textual"
             ) from exc
 
         files = load_report_files(self._folder)

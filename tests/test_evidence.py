@@ -71,7 +71,7 @@ def test_zip_skips_binary_entries(tmp_path):
             "image.png": b"\x89PNG\r\n\x1a\n",
         },
     )
-    bundle = gather_evidence(
+    gather_evidence(
         folder=folder,
         zendesk_attachments=[],
         extra_files=[z],

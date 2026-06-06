@@ -17,7 +17,11 @@ def test_spawned_server_lists_three_read_tools():
     params = StdioServerParameters(
         command=sys.executable,
         args=["-m", "noc_cli.mcp.zendesk_server"],
-        env={"ZENDESK_SUBDOMAIN": "x", "ZENDESK_EMAIL": "x@x.co", "ZENDESK_API_TOKEN": "x"},
+        env={
+            "ZENDESK_SUBDOMAIN": "x",
+            "ZENDESK_EMAIL": "x@x.co",
+            "ZENDESK_API_TOKEN": "x",
+        },
     )
 
     async def _run():

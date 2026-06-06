@@ -13,8 +13,20 @@ if TYPE_CHECKING:
 from noc_cli.scaffold import TicketFolder
 
 _TEXT_EXTENSIONS = {
-    ".txt", ".log", ".md", ".json", ".xml", ".csv", ".tsv",
-    ".yaml", ".yml", ".conf", ".cfg", ".ini", ".sip", ".sdp",
+    ".txt",
+    ".log",
+    ".md",
+    ".json",
+    ".xml",
+    ".csv",
+    ".tsv",
+    ".yaml",
+    ".yml",
+    ".conf",
+    ".cfg",
+    ".ini",
+    ".sip",
+    ".sdp",
 }
 _PCAP_EXTENSIONS = {".pcap", ".pcapng", ".cap"}
 
@@ -54,7 +66,7 @@ def gather_evidence(
     zendesk_attachments: list[dict],
     extra_files: list[Path],
     pastes: list[PasteInput],
-    zendesk_client: "ZendeskClient | None" = None,
+    zendesk_client: ZendeskClient | None = None,
 ) -> EvidenceBundle:
     """Gather all evidence into the ticket sandbox.
 
@@ -114,8 +126,8 @@ def _extract_zip(zip_path: Path, logs_dir: Path) -> None:
 
 def write_ticket_source(
     folder: TicketFolder,
-    ticket: "Ticket",
-    comments: "list[Comment] | None" = None,
+    ticket: Ticket,
+    comments: list[Comment] | None = None,
 ) -> Path:
     """Persist the fetched Zendesk ticket as readable markdown for the agent.
 
@@ -141,7 +153,13 @@ def write_ticket_source(
         meta.append(f"- created_at: {ticket.created_at.isoformat()}")
     if ticket.updated_at:
         meta.append(f"- updated_at: {ticket.updated_at.isoformat()}")
-    lines += meta + ["", "## Description", "", ticket.description or "(no description)", ""]
+    lines += meta + [
+        "",
+        "## Description",
+        "",
+        ticket.description or "(no description)",
+        "",
+    ]
 
     if comments:
         lines += ["## Comments", ""]
@@ -149,7 +167,12 @@ def write_ticket_source(
             kind = "public" if c.public else "internal"
             ts = c.created_at.isoformat() if c.created_at else ""
             suffix = f" · {ts}" if ts else ""
-            lines += [f"### Comment {c.id} ({kind}{suffix})", "", c.body or "(empty)", ""]
+            lines += [
+                f"### Comment {c.id} ({kind}{suffix})",
+                "",
+                c.body or "(empty)",
+                "",
+            ]
 
     dest = folder.logs / "00-ticket.md"
     dest.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

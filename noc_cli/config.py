@@ -105,7 +105,9 @@ class Config(BaseModel):
     watch_view: str = ""
     watch_assignee: str = ""
     notify: str = "banner,ping"
-    timezone: str = "local"  # "local" (system), "utc", or an IANA name e.g. America/New_York
+    timezone: str = (
+        "local"  # "local" (system), "utc", or an IANA name e.g. America/New_York
+    )
     scout_view: str = "6490757606044"  # Tier-1 (NOC) Queue; Backlog Scout pool
 
     @property

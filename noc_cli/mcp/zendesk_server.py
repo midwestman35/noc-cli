@@ -83,7 +83,9 @@ def fetch_comments(client: ZendeskClient, ticket_id: int) -> dict[str, Any]:
     return redacted
 
 
-def search_tickets(client: ZendeskClient, query: str, cap: int = SEARCH_CAP) -> dict[str, Any]:
+def search_tickets(
+    client: ZendeskClient, query: str, cap: int = SEARCH_CAP
+) -> dict[str, Any]:
     try:
         tickets = client.search(query)
     except Exception as exc:  # noqa: BLE001

@@ -20,6 +20,7 @@ SYNTHESIS_SYSTEM_PROMPT = (
     "resolution."
 )
 
+
 def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
     ordered = sorted(
         reports,
@@ -30,7 +31,8 @@ def _fallback(reports: list[ScreenReport]) -> list[RankedCandidate]:
         RankedCandidate(
             ticket_id=report.ticket_id,
             rank=i + 1,
-            rationale=report.one_line or "(synthesis unavailable; ranked by confidence)",
+            rationale=report.one_line
+            or "(synthesis unavailable; ranked by confidence)",
             runbook_id=report.runbook_id,
             runbook_match_confidence=report.runbook_match_confidence,
             missing_evidence=report.missing_evidence,
@@ -61,9 +63,11 @@ async def synthesize(
         return ScoutReport(generated_at=now, ranked=[])
 
     if options_factory is None:
-        options_factory = lambda: build_options(
-            SYNTHESIS, system_prompt=SYNTHESIS_SYSTEM_PROMPT, cwd=cwd
-        )
+
+        def options_factory():
+            return build_options(
+                SYNTHESIS, system_prompt=SYNTHESIS_SYSTEM_PROMPT, cwd=cwd
+            )
 
     payload = json.dumps([report.model_dump() for report in reports], indent=2)
     prompt = (

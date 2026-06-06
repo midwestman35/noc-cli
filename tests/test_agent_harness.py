@@ -49,7 +49,9 @@ def test_edit_outside_sandbox_is_denied(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("Edit", {"file_path": str(tmp_path / "outside.txt")})))
+    result = _run(
+        _call(pre, _pre_event("Edit", {"file_path": str(tmp_path / "outside.txt")}))
+    )
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
@@ -57,8 +59,16 @@ def test_write_inside_sandbox_is_allowed(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("Write", {"file_path": str(sandbox / "analysis" / "notes.md")})))
-    assert result == {} or result.get("hookSpecificOutput", {}).get("permissionDecision") == "allow"
+    result = _run(
+        _call(
+            pre,
+            _pre_event("Write", {"file_path": str(sandbox / "analysis" / "notes.md")}),
+        )
+    )
+    assert (
+        result == {}
+        or result.get("hookSpecificOutput", {}).get("permissionDecision") == "allow"
+    )
 
 
 def test_read_anywhere_is_allowed(tmp_path):
@@ -85,7 +95,14 @@ def test_restricted_read_inside_sandbox_is_allowed(tmp_path):
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox, restrict_read_tools=True)
 
-    result = _run(_call(pre, _pre_event("Read", {"file_path": str(sandbox / "runbooks" / "low-audio.md")})))
+    result = _run(
+        _call(
+            pre,
+            _pre_event(
+                "Read", {"file_path": str(sandbox / "runbooks" / "low-audio.md")}
+            ),
+        )
+    )
 
     spec = result.get("hookSpecificOutput", {})
     assert spec.get("permissionDecision", "allow") != "deny"
@@ -106,7 +123,9 @@ def test_bash_redirect_outside_sandbox_is_denied(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("Bash", {"command": "cat logs/foo.log > /tmp/exfil.txt"})))
+    result = _run(
+        _call(pre, _pre_event("Bash", {"command": "cat logs/foo.log > /tmp/exfil.txt"}))
+    )
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
@@ -114,7 +133,9 @@ def test_bash_grep_is_allowed(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("Bash", {"command": "grep -r 'SIP INVITE' logs/"})))
+    result = _run(
+        _call(pre, _pre_event("Bash", {"command": "grep -r 'SIP INVITE' logs/"}))
+    )
     spec = result.get("hookSpecificOutput", {})
     assert spec.get("permissionDecision", "allow") != "deny"
 
@@ -123,7 +144,9 @@ def test_zendesk_write_mcp_is_denied(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("mcp__zendesk__create_ticket", {"subject": "x"})))
+    result = _run(
+        _call(pre, _pre_event("mcp__zendesk__create_ticket", {"subject": "x"}))
+    )
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
@@ -136,7 +159,9 @@ def test_post_tool_use_appends_to_events_jsonl(tmp_path):
     events_path = sandbox / "events.jsonl"
     post = make_post_tool_use(events_path=events_path)
     _run(_call(post, _post_event("Read", {"file_path": "logs/k.log"}, "line1\nline2")))
-    _run(_call(post, _post_event("Bash", {"command": "grep INVITE logs/k.log"}, "match")))
+    _run(
+        _call(post, _post_event("Bash", {"command": "grep INVITE logs/k.log"}, "match"))
+    )
     lines = events_path.read_text().splitlines()
     assert len(lines) == 2
     first = json.loads(lines[0])
@@ -159,5 +184,7 @@ def test_bash_scp_is_denied(tmp_path):
     sandbox = tmp_path / "Tickets" / "18432"
     sandbox.mkdir(parents=True)
     pre = make_pre_tool_use(sandbox_root=sandbox)
-    result = _run(_call(pre, _pre_event("Bash", {"command": "scp logs/x.log user@host:/tmp/"})))
+    result = _run(
+        _call(pre, _pre_event("Bash", {"command": "scp logs/x.log user@host:/tmp/"}))
+    )
     assert result["hookSpecificOutput"]["permissionDecision"] == "deny"

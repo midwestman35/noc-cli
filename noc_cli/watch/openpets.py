@@ -43,7 +43,14 @@ def discovery_path() -> Path:
     if override:
         return Path(override)
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "OpenPets" / "runtime" / "ipc.json"
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "OpenPets"
+            / "runtime"
+            / "ipc.json"
+        )
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
         return Path(base) / "OpenPets" / "runtime" / "ipc.json"

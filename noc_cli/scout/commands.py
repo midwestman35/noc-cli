@@ -105,9 +105,7 @@ def run_scout_list(cfg, *, top_k: int, min_staleness_days: int) -> None:
     """List candidates needing review."""
     from noc_cli.scout.render import render_scout_report  # noqa: PLC0415
 
-    report = run_scout_report(
-        cfg, top_k=top_k, min_staleness_days=min_staleness_days
-    )
+    report = run_scout_report(cfg, top_k=top_k, min_staleness_days=min_staleness_days)
     typer.echo(render_scout_report(report))
     if report.dropped:
         typer.secho(

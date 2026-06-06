@@ -9,20 +9,20 @@ from typing import Any
 # ── Bash: patterns that are unconditionally destructive ────────────────────
 
 _DESTRUCTIVE_BASH_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\brm\b"),                    # rm (any form)
-    re.compile(r"\bmv\b"),                    # mv (may exfil)
-    re.compile(r"\bcp\b"),                    # cp (may exfil out of sandbox)
-    re.compile(r"\bscp\b"),                   # ssh file copy (exfil)
-    re.compile(r"\brsync\b"),                 # remote sync (exfil)
-    re.compile(r"\bsftp\b"),                  # ssh file transfer (exfil)
-    re.compile(r"\bchmod\b"),                 # permission change
+    re.compile(r"\brm\b"),  # rm (any form)
+    re.compile(r"\bmv\b"),  # mv (may exfil)
+    re.compile(r"\bcp\b"),  # cp (may exfil out of sandbox)
+    re.compile(r"\bscp\b"),  # ssh file copy (exfil)
+    re.compile(r"\brsync\b"),  # remote sync (exfil)
+    re.compile(r"\bsftp\b"),  # ssh file transfer (exfil)
+    re.compile(r"\bchmod\b"),  # permission change
     re.compile(r"\bchown\b"),
-    re.compile(r"\bcurl\b"),                  # network write
+    re.compile(r"\bcurl\b"),  # network write
     re.compile(r"\bwget\b"),
-    re.compile(r"\bpip\s+install\b"),         # package mutation
+    re.compile(r"\bpip\s+install\b"),  # package mutation
     re.compile(r"\buv\s+add\b"),
     re.compile(r"\bnpm\s+install\b"),
-    re.compile(r">(?!=)"),                    # stdout redirect (> or >>)
+    re.compile(r">(?!=)"),  # stdout redirect (> or >>)
 ]
 
 # Zendesk MCP tool names that are writes (exact prefix match is intentional)
@@ -95,7 +95,9 @@ def make_pre_tool_use(sandbox_root: Path, *, restrict_read_tools: bool = False):
         tl = tool_name.lower()
         for prefix in _ZENDESK_WRITE_PREFIXES:
             if tl.startswith(prefix):
-                return _deny(input_data, f"Zendesk write tool {tool_name!r} is not permitted")
+                return _deny(
+                    input_data, f"Zendesk write tool {tool_name!r} is not permitted"
+                )
 
         # File-writing tools: must resolve inside sandbox
         if tool_name in _WRITE_TOOLS:

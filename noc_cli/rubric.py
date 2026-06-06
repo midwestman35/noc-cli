@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
-from typing import Iterable
 
 _VERSION_RE = re.compile(r'(?m)^rubric_version:\s*"?([^"\n]+?)"?\s*$')
 _CORE_BOUNDARY = "## Symptom Class"
@@ -34,8 +34,10 @@ def _extract_core(text: str) -> str:
 
 
 def _read_rubric_text() -> str:
-    return resources.files("noc_cli.data").joinpath("fork-rubric.md").read_text(
-        encoding="utf-8"
+    return (
+        resources.files("noc_cli.data")
+        .joinpath("fork-rubric.md")
+        .read_text(encoding="utf-8")
     )
 
 

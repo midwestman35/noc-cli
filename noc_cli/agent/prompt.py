@@ -30,6 +30,7 @@ def _rubric_core_text(rubric_text: str) -> str:
         return rubric_text
     return rubric_text.split(_CORE_BOUNDARY, 1)[0].rstrip() + "\n"
 
+
 _PROMPT_TEMPLATE = """\
 # Role
 You are a senior L3 NOC triage analyst at Carbyne. Your task is to perform

@@ -89,7 +89,9 @@ def append_investigation(store: MemoryStore, record: InvestigationRecord) -> Non
     _append_memory_md(store.memory_md_path, record)
 
 
-def search(store: MemoryStore, query: str, limit: int = 10) -> list[InvestigationRecord]:
+def search(
+    store: MemoryStore, query: str, limit: int = 10
+) -> list[InvestigationRecord]:
     """FTS5 full-text search over investigations. Returns ranked results."""
     if not query or not query.strip():
         return []

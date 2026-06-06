@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 
@@ -31,6 +30,7 @@ class _FakeClient:
         class _Msg:
             def __init__(self, result):
                 self.result = result
+
         yield _Msg(self._reply)
 
     async def interrupt(self):
@@ -80,16 +80,19 @@ async def test_interrupt_delegates_to_client(tmp_path):
 
 async def test_agent_turn_persisted_even_if_consumer_aborts(tmp_path):
     import json
+
     from noc_cli.tui.chat import ChatSession
 
     folder = tmp_path / "555"
     folder.mkdir()
-    session = ChatSession(ticket_id=555, folder=folder, client_factory=lambda: _FakeClient())
+    session = ChatSession(
+        ticket_id=555, folder=folder, client_factory=lambda: _FakeClient()
+    )
 
     gen = session.send("hi")
     await gen.__anext__()  # analyst echo ("you ❯ hi")
     await gen.__anext__()  # first agent line ("◆ …")
-    await gen.aclose()     # consumer aborts mid-stream → GeneratorExit
+    await gen.aclose()  # consumer aborts mid-stream → GeneratorExit
 
     convo = (folder / "CONVERSATION.jsonl").read_text().splitlines()
     roles = [json.loads(line)["role"] for line in convo]
@@ -103,13 +106,23 @@ async def test_last_user_turn_tracks_redacted_input(tmp_path):
     folder.mkdir()
 
     class _C:
-        async def connect(self): return None
-        async def disconnect(self): return None
-        async def query(self, p): pass
+        async def connect(self):
+            return None
+
+        async def disconnect(self):
+            return None
+
+        async def query(self, p):
+            pass
+
         async def receive_response(self):
-            class M: result = "ok"
+            class M:
+                result = "ok"
+
             yield M()
-        async def interrupt(self): pass
+
+        async def interrupt(self):
+            pass
 
     s = ChatSession(ticket_id=9, folder=folder, client_factory=lambda: _C())
     async for _ in s.send("first question"):

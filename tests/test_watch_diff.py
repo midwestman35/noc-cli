@@ -44,7 +44,9 @@ def test_no_change_when_new_comment_is_private():
 
 
 def test_no_change_when_new_comment_is_agent_not_requester():
-    comments_map = {1: [_comment(10, author_id=777, public=True, created_at="2026-06-02T10:00:00Z")]}
+    comments_map = {
+        1: [_comment(10, author_id=777, public=True, created_at="2026-06-02T10:00:00Z")]
+    }
     last_seen = {1: _snap(status="open", last_comment_at="2026-06-01T08:00:00Z")}
     t = Ticket(id=1, subject="T1", status="open", requester_id=999)
     assert diff_tickets([t], comments_map, last_seen) == []
@@ -73,7 +75,9 @@ def test_generic_status_change_emits_status_changed_event():
 
 def test_pending_to_open_is_flagged_as_customer_replied():
     t = Ticket(id=2, subject="T2", status="open", requester_id=999)
-    comments_map = {2: [_comment(30, author_id=999, public=True, created_at="2026-06-02T11:00:00Z")]}
+    comments_map = {
+        2: [_comment(30, author_id=999, public=True, created_at="2026-06-02T11:00:00Z")]
+    }
     last_seen = {2: _snap(status="pending", last_comment_at="2026-06-01T08:00:00Z")}
     events = diff_tickets([t], comments_map, last_seen)
     assert len(events) == 1
@@ -86,7 +90,9 @@ def test_pending_to_open_is_flagged_as_customer_replied():
 
 def test_pending_to_open_without_requester_comment_not_flagged_customer_replied():
     t = Ticket(id=3, subject="T3", status="open", requester_id=999)
-    comments_map = {3: [_comment(40, author_id=777, public=True, created_at="2026-06-02T11:00:00Z")]}
+    comments_map = {
+        3: [_comment(40, author_id=777, public=True, created_at="2026-06-02T11:00:00Z")]
+    }
     last_seen = {3: _snap(status="pending", last_comment_at="2026-06-01T08:00:00Z")}
     events = diff_tickets([t], comments_map, last_seen)
     assert len(events) == 1
@@ -96,10 +102,12 @@ def test_pending_to_open_without_requester_comment_not_flagged_customer_replied(
 
 def test_new_public_requester_comment_emits_new_comment_event():
     t = Ticket(id=5, subject="T5", status="open", requester_id=999)
-    comments_map = {5: [
-        _comment(50, author_id=999, public=True, created_at="2026-06-01T08:00:00Z"),
-        _comment(51, author_id=999, public=True, created_at="2026-06-02T12:00:00Z"),
-    ]}
+    comments_map = {
+        5: [
+            _comment(50, author_id=999, public=True, created_at="2026-06-01T08:00:00Z"),
+            _comment(51, author_id=999, public=True, created_at="2026-06-02T12:00:00Z"),
+        ]
+    }
     last_seen = {5: _snap(status="open", last_comment_at="2026-06-01T08:00:00Z")}
     events = diff_tickets([t], comments_map, last_seen)
     assert len(events) == 1
@@ -111,7 +119,9 @@ def test_new_public_requester_comment_emits_new_comment_event():
 
 def test_both_status_change_and_new_comment_emits_one_event_with_both_flags():
     t = Ticket(id=6, subject="T6", status="open", requester_id=999)
-    comments_map = {6: [_comment(60, author_id=999, public=True, created_at="2026-06-02T14:00:00Z")]}
+    comments_map = {
+        6: [_comment(60, author_id=999, public=True, created_at="2026-06-02T14:00:00Z")]
+    }
     last_seen = {6: _snap(status="pending", last_comment_at="2026-06-01T09:00:00Z")}
     events = diff_tickets([t], comments_map, last_seen)
     assert len(events) == 1

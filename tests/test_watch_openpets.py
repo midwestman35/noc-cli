@@ -24,7 +24,12 @@ def test_read_discovery_rejects_protocol_version_mismatch(monkeypatch, tmp_path)
     path = tmp_path / "ipc.json"
     path.write_text(
         json.dumps(
-            {"protocol": "openpets-ipc", "protocolVersion": 2, "endpoint": "x", "token": "y"}
+            {
+                "protocol": "openpets-ipc",
+                "protocolVersion": 2,
+                "endpoint": "x",
+                "token": "y",
+            }
         ),
         encoding="utf-8",
     )
@@ -61,11 +66,15 @@ def test_request_builds_payload_and_returns_result(monkeypatch):
 
 
 def test_request_raises_on_error_response(monkeypatch):
-    monkeypatch.setattr(openpets, "_read_discovery", lambda: {"endpoint": "e", "token": "t"})
+    monkeypatch.setattr(
+        openpets, "_read_discovery", lambda: {"endpoint": "e", "token": "t"}
+    )
     monkeypatch.setattr(
         openpets,
         "_send",
-        lambda endpoint, line: b'{"id":"1","ok":false,"error":{"code":"no_pet","message":"none"}}\n',
+        lambda endpoint, line: (
+            b'{"id":"1","ok":false,"error":{"code":"no_pet","message":"none"}}\n'
+        ),
     )
     with pytest.raises(OpenPetsUnavailable):
         openpets.request("pet.say", {"message": "hi"})

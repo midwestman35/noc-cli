@@ -12,10 +12,12 @@
 - `uv run noc-cli --help`: inspect the installed CLI surface.
 - `uv run noc-cli doctor`: validate local config, paths, Claude engine availability, and notification support.
 - `uv run noc-cli investigate 12345 --no-agent`: exercise scaffold, evidence gathering, and redaction without invoking the LLM.
+- `uv run ruff format`: auto-format the codebase (also runs automatically on edit via the Claude Code hook).
+- `uv run ruff check`: lint the codebase; add `--fix` to apply safe autofixes.
 
 ## Coding Style & Naming Conventions
 
-Target Python 3.10+ and follow the existing style: 4-space indentation, type hints, `from __future__ import annotations`, small pure functions, and explicit `Path` handling. Use `snake_case` for modules, functions, variables, and test names; use `PascalCase` for Pydantic models, exceptions, Textual app classes, and notifier classes. Keep network, filesystem, and UI side effects injectable so tests can use `tmp_path`, mocks, or fake clients.
+Target Python 3.10+ and follow the existing style: 4-space indentation, type hints, `from __future__ import annotations`, small pure functions, and explicit `Path` handling. Use `snake_case` for modules, functions, variables, and test names; use `PascalCase` for Pydantic models, exceptions, Textual app classes, and notifier classes. Keep network, filesystem, and UI side effects injectable so tests can use `tmp_path`, mocks, or fake clients. `ruff` enforces this style (config in `pyproject.toml`): formatting plus the `E`, `F`, `I`, and `UP` lint rules. Run `uv run ruff check` before opening a PR.
 
 ## Testing Guidelines
 

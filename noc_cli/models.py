@@ -27,9 +27,13 @@ class Ticket(BaseModel):
     description: str = ""
     requester_org: str | None = None
     requester_email: str | None = None
-    requester_id: int | None = None     # Zendesk requester user id; used by the watcher diff
-    assignee_id: int | None = None      # Zendesk assignee user id; returned on view_tickets rows
-    assignee_email: str | None = None   # only present when a ticket payload sideloads it
+    requester_id: int | None = (
+        None  # Zendesk requester user id; used by the watcher diff
+    )
+    assignee_id: int | None = (
+        None  # Zendesk assignee user id; returned on view_tickets rows
+    )
+    assignee_email: str | None = None  # only present when a ticket payload sideloads it
     status: str = ""
     priority: str = ""
     tags: list[str] = Field(default_factory=list)
@@ -241,7 +245,7 @@ class ForkPacket(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _check_invariants(self) -> "ForkPacket":
+    def _check_invariants(self) -> ForkPacket:
         # Symptom tag must be in the approved set (spec §17).
         if self.symptom_tag not in APPROVED_SYMPTOM_TAGS:
             raise ValueError(

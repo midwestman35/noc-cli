@@ -1,10 +1,10 @@
 """noc-cli command-line interface — thin Typer shims over the logic modules."""
+
 from __future__ import annotations
 
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -182,8 +182,10 @@ def investigate(
     paste: list[str] = typer.Option(
         [], "--paste", help="Inline text as LABEL=TEXT (repeatable)"
     ),
-    force: bool = typer.Option(False, "--force", help="Override the STATE.md soft-lock"),
-    fixture: Optional[Path] = typer.Option(
+    force: bool = typer.Option(
+        False, "--force", help="Override the STATE.md soft-lock"
+    ),
+    fixture: Path | None = typer.Option(
         None,
         "--fixture",
         help="Offline replay: directory containing handoff_good.json (skips fetch + agent)",
@@ -191,7 +193,7 @@ def investigate(
     no_agent: bool = typer.Option(
         False, "--no-agent", help="Dry path: scaffold + gather + redact; no LLM"
     ),
-    suspect: Optional[str] = typer.Option(
+    suspect: str | None = typer.Option(
         None,
         "--suspect",
         help="Runbook slug to seed grounding (e.g. low-audio); skips the interactive prompt.",
@@ -236,7 +238,7 @@ async def _run_investigate(
     extra_files: list[Path],
     pastes: list[str],
     force: bool,
-    fixture: Optional[Path],
+    fixture: Path | None,
     no_agent: bool,
     initial_hypothesis: str,
     verbose: bool,
@@ -257,7 +259,9 @@ async def _run_investigate(
         root = await run_investigation(
             ticket_id=ticket_id,
             config=cfg,
-            tickets_root=Path(os.environ.get("NOC_TICKETS_ROOT", str(cfg.tickets_root))),
+            tickets_root=Path(
+                os.environ.get("NOC_TICKETS_ROOT", str(cfg.tickets_root))
+            ),
             owner=owner,
             initial_hypothesis=initial_hypothesis,
             extra_files=extra_files,
@@ -285,7 +289,7 @@ async def _run_investigate(
 
 @app.command(hidden=True, deprecated=True)
 def scout(
-    take: Optional[int] = typer.Option(
+    take: int | None = typer.Option(
         None,
         "--take",
         help="Confirm, assign this ticket id to yourself, then investigate.",

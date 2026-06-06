@@ -1,8 +1,15 @@
+import anyio
 import httpx
-import pytest
 
-from noc_cli.mcp.zendesk_server import fetch_ticket, _map_error
-from noc_cli.models import Ticket
+from noc_cli.mcp.zendesk_server import (
+    SEARCH_CAP,
+    _map_error,
+    build_server,
+    fetch_comments,
+    fetch_ticket,
+    search_tickets,
+)
+from noc_cli.models import Comment, Ticket
 from noc_cli.zendesk import ZendeskError
 
 
@@ -19,10 +26,19 @@ class _FakeClient:
 
 def _ticket(**kw):
     base = dict(
-        id=761, subject="911 at 37.7749, -122.4194", description="caller addr 123 Main Street",
-        requester_org="City PD", requester_email="caller@example.com", requester_id=99,
-        assignee_id=1, assignee_email="noc@carbyne.com", status="open", priority="high",
-        tags=["apex"], created_at="2026-06-01T00:00:00Z", updated_at="2026-06-02T00:00:00Z",
+        id=761,
+        subject="911 at 37.7749, -122.4194",
+        description="caller addr 123 Main Street",
+        requester_org="City PD",
+        requester_email="caller@example.com",
+        requester_id=99,
+        assignee_id=1,
+        assignee_email="noc@carbyne.com",
+        status="open",
+        priority="high",
+        tags=["apex"],
+        created_at="2026-06-01T00:00:00Z",
+        updated_at="2026-06-02T00:00:00Z",
         comments=[],
     )
     base.update(kw)
@@ -33,9 +49,9 @@ def test_fetch_ticket_redacts_freetext_and_excludes_email_identifiers():
     out = fetch_ticket(_FakeClient(ticket=_ticket()), 761)
     assert out["id"] == 761
     assert out["status"] == "open"
-    assert "<COORDS>" in out["subject"]      # coords scrubbed
-    assert "<ADDR>" in out["description"]     # address scrubbed
-    assert "requester_email" not in out       # raw email identifier excluded
+    assert "<COORDS>" in out["subject"]  # coords scrubbed
+    assert "<ADDR>" in out["description"]  # address scrubbed
+    assert "requester_email" not in out  # raw email identifier excluded
     assert "assignee_email" not in out
     assert "requester_id" not in out
 
@@ -53,10 +69,6 @@ def test_map_error_classifies_zendesk_auth():
     assert out["kind"] == "auth"
 
 
-from noc_cli.mcp.zendesk_server import fetch_comments
-from noc_cli.models import Comment
-
-
 class _FakeCommentsClient:
     def __init__(self, comments=None, exc=None):
         self._comments = comments or []
@@ -69,8 +81,14 @@ class _FakeCommentsClient:
 
 
 def _comment(**kw):
-    base = dict(id=1, author_id=42, public=True, body="callback 37.7749, -122.4194",
-                created_at="2026-06-01T00:00:00Z", attachments=[])
+    base = dict(
+        id=1,
+        author_id=42,
+        public=True,
+        body="callback 37.7749, -122.4194",
+        created_at="2026-06-01T00:00:00Z",
+        attachments=[],
+    )
     base.update(kw)
     return Comment.model_validate(base)
 
@@ -83,9 +101,6 @@ def test_fetch_comments_redacts_body_and_excludes_author_id():
     assert out["count"] == 1
 
 
-from noc_cli.mcp.zendesk_server import search_tickets, SEARCH_CAP
-
-
 class _FakeSearchClient:
     def __init__(self, tickets):
         self._tickets = tickets
@@ -95,17 +110,14 @@ class _FakeSearchClient:
 
 
 def test_search_caps_results_and_redacts_subjects():
-    tickets = [_ticket(id=i, subject="37.7749, -122.4194") for i in range(SEARCH_CAP + 5)]
+    tickets = [
+        _ticket(id=i, subject="37.7749, -122.4194") for i in range(SEARCH_CAP + 5)
+    ]
     out = search_tickets(_FakeSearchClient(tickets), "apex")
     assert out["count"] == SEARCH_CAP
     assert len(out["results"]) == SEARCH_CAP
     assert "<COORDS>" in out["results"][0]["subject"]
     assert set(out["results"][0].keys()) == {"id", "subject", "status", "tags"}
-
-
-import anyio
-
-from noc_cli.mcp.zendesk_server import build_server
 
 
 def test_server_registers_exactly_the_three_read_tools():

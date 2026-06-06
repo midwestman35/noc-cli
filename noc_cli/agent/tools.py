@@ -9,7 +9,9 @@ from noc_cli.redact import redact_value
 HISTORY_LIMIT = 20
 
 
-def run_history_search(symptom_tag, zendesk_client, memory_store, limit: int = HISTORY_LIMIT):
+def run_history_search(
+    symptom_tag, zendesk_client, memory_store, limit: int = HISTORY_LIMIT
+):
     """Merged local-FTS5 + live-Zendesk history search. Returns (redacted_dict, total).
 
     `seed_history` swallows Zendesk errors internally (returns []), so this never

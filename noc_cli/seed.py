@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from noc_cli.runbooks import DOMAIN_MAP
 
@@ -59,7 +59,9 @@ def resolve_seed(
         return ""
 
     if echo_fn is not None:
-        echo_fn("What do you suspect this ticket is? You can change course mid-investigation.")
+        echo_fn(
+            "What do you suspect this ticket is? You can change course mid-investigation."
+        )
         for line in menu_lines():
             echo_fn(line)
     return _choice_to_tag(prompt_fn("Selection"))

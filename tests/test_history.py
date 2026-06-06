@@ -11,12 +11,21 @@ def test_vendor_tag_not_in_search_tags():
 
 
 def test_all_six_symptom_tags_present():
-    expected = {"[apex]", "[low audio]", "[dropped calls]", "[No ANI]", "[No ALI]", "[event history]"}
+    expected = {
+        "[apex]",
+        "[low audio]",
+        "[dropped calls]",
+        "[No ANI]",
+        "[No ALI]",
+        "[event history]",
+    }
     assert expected == set(HISTORY_SEARCH_TAGS)
 
 
 def test_seed_history_returns_memory_results(tmp_path):
-    store = MemoryStore(db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md")
+    store = MemoryStore(
+        db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md"
+    )
     store.init()
     append_investigation(
         store,
@@ -44,7 +53,9 @@ def test_seed_history_returns_memory_results(tmp_path):
 
 
 def test_seed_history_merges_zendesk_results(tmp_path):
-    store = MemoryStore(db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md")
+    store = MemoryStore(
+        db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md"
+    )
     store.init()
 
     mock_zendesk = MagicMock()
@@ -66,7 +77,9 @@ def test_seed_history_merges_zendesk_results(tmp_path):
 
 def test_seed_history_deduplicates(tmp_path):
     """Same ticket_id from both sources should appear only once."""
-    store = MemoryStore(db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md")
+    store = MemoryStore(
+        db_path=tmp_path / "noc.db", memory_md_path=tmp_path / "MEMORY.md"
+    )
     store.init()
     append_investigation(
         store,

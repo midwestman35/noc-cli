@@ -1,14 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from typer.testing import CliRunner
-
 import httpx
+from typer.testing import CliRunner
 
 from noc_cli.cli import app
 from noc_cli.models import Ticket
-from noc_cli.scout.writer import ZendeskWriteError
 from noc_cli.scout.models import RankedCandidate, ScoutReport
+from noc_cli.scout.writer import ZendeskWriteError
 from noc_cli.zendesk import ZendeskError
 
 runner = CliRunner()
@@ -58,7 +57,9 @@ def _stale_ticket(**updates):
 
 
 def test_scout_lists_candidates():
-    with mock.patch("noc_cli.scout.commands.run_scout_report", return_value=_REPORT) as run:
+    with mock.patch(
+        "noc_cli.scout.commands.run_scout_report", return_value=_REPORT
+    ) as run:
         result = runner.invoke(app, ["scout"])
 
     assert result.exit_code == 0, result.output
@@ -74,9 +75,7 @@ def test_scout_list_warns_about_dropped_screens():
         candidates_screened=3,
         reports_parsed=1,
     )
-    with mock.patch(
-        "noc_cli.scout.commands.run_scout_report", return_value=report
-    ):
+    with mock.patch("noc_cli.scout.commands.run_scout_report", return_value=report):
         result = runner.invoke(app, ["scout"])
 
     assert result.exit_code == 0, result.output
@@ -84,7 +83,9 @@ def test_scout_list_warns_about_dropped_screens():
 
 
 def test_scout_default_min_staleness_is_7_days():
-    with mock.patch("noc_cli.scout.commands.run_scout_report", return_value=_REPORT) as run:
+    with mock.patch(
+        "noc_cli.scout.commands.run_scout_report", return_value=_REPORT
+    ) as run:
         result = runner.invoke(app, ["scout"])
 
     assert result.exit_code == 0, result.output
@@ -93,11 +94,16 @@ def test_scout_default_min_staleness_is_7_days():
 
 def test_scout_take_confirms_then_assigns_and_investigates():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
-        mock.patch("noc_cli.scout.commands.make_zendesk_client", return_value=_FakeClient(_stale_ticket())), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
+        mock.patch(
+            "noc_cli.scout.commands.make_zendesk_client",
+            return_value=_FakeClient(_stale_ticket()),
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 0, result.output
@@ -107,11 +113,16 @@ def test_scout_take_confirms_then_assigns_and_investigates():
 
 def test_scout_take_aborts_without_confirmation():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
-        mock.patch("noc_cli.scout.commands.make_zendesk_client", return_value=_FakeClient(_stale_ticket())), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
+        mock.patch(
+            "noc_cli.scout.commands.make_zendesk_client",
+            return_value=_FakeClient(_stale_ticket()),
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42"], input="n\n")
 
     assert result.exit_code != 0 or "Aborted" in result.output
@@ -121,14 +132,16 @@ def test_scout_take_aborts_without_confirmation():
 
 def test_scout_take_preflight_aborts_if_assigned():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
         mock.patch(
             "noc_cli.scout.commands.make_zendesk_client",
             return_value=_FakeClient(_stale_ticket(assignee_id=99)),
-        ), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 2
@@ -139,14 +152,16 @@ def test_scout_take_preflight_aborts_if_assigned():
 
 def test_scout_take_preflight_aborts_if_solved():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
         mock.patch(
             "noc_cli.scout.commands.make_zendesk_client",
             return_value=_FakeClient(_stale_ticket(status="solved")),
-        ), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 2
@@ -157,14 +172,16 @@ def test_scout_take_preflight_aborts_if_solved():
 
 def test_scout_take_preflight_aborts_if_closed():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
         mock.patch(
             "noc_cli.scout.commands.make_zendesk_client",
             return_value=_FakeClient(_stale_ticket(status="closed")),
-        ), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 2
@@ -175,14 +192,16 @@ def test_scout_take_preflight_aborts_if_closed():
 
 def test_scout_take_preflight_aborts_if_updated_at_missing():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
         mock.patch(
             "noc_cli.scout.commands.make_zendesk_client",
             return_value=_FakeClient(_stale_ticket(updated_at=None)),
-        ), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 2
@@ -193,14 +212,16 @@ def test_scout_take_preflight_aborts_if_updated_at_missing():
 
 def test_scout_take_preflight_aborts_if_no_longer_stale():
     writer = mock.MagicMock()
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
         mock.patch(
             "noc_cli.scout.commands.make_zendesk_client",
             return_value=_FakeClient(_stale_ticket(updated_at=NOW - timedelta(days=2))),
-        ), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 2
@@ -215,11 +236,13 @@ def test_scout_take_rechecks_after_confirmation_before_assigning():
         _stale_ticket(),
         _stale_ticket(assignee_id=99),
     )
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
-        mock.patch("noc_cli.scout.commands.make_zendesk_client", return_value=client), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW), \
-        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv:
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
+        mock.patch("noc_cli.scout.commands.make_zendesk_client", return_value=client),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+        mock.patch("noc_cli.scout.commands.invoke_investigate") as inv,
+    ):
         result = runner.invoke(app, ["scout", "--take", "42"], input="y\n")
 
     assert result.exit_code == 2
@@ -264,10 +287,15 @@ def test_scout_take_surfaces_zendesk_error():
 def test_scout_take_surfaces_write_error():
     writer = mock.MagicMock()
     writer.assign_ticket.side_effect = ZendeskWriteError("auth failed on assign")
-    with mock.patch("noc_cli.scout.commands.make_writer", return_value=writer), \
-        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7), \
-        mock.patch("noc_cli.scout.commands.make_zendesk_client", return_value=_FakeClient(_stale_ticket())), \
-        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW):
+    with (
+        mock.patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        mock.patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
+        mock.patch(
+            "noc_cli.scout.commands.make_zendesk_client",
+            return_value=_FakeClient(_stale_ticket()),
+        ),
+        mock.patch("noc_cli.scout.commands.now_utc", return_value=NOW),
+    ):
         result = runner.invoke(app, ["scout", "--take", "42", "--yes"])
 
     assert result.exit_code == 1

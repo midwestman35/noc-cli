@@ -78,7 +78,7 @@ def test_redact_value_scrubs_string_leaves_and_counts():
     obj = {"loc": "37.7749, -122.4194", "id": 5, "tags": ["x"]}
     out, total = redact_value(obj)
     assert out["loc"] == "<COORDS>"
-    assert out["id"] == 5          # non-str untouched
+    assert out["id"] == 5  # non-str untouched
     assert out["tags"] == ["x"]
     assert total == 1
 

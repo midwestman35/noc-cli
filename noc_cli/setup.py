@@ -6,6 +6,7 @@ side-effecting operations (prompt function, destination path) as
 arguments so it can be driven in tests without real stdin and with
 writes redirected to a temp path rather than the real home directory.
 """
+
 from __future__ import annotations
 
 import os
@@ -13,7 +14,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 from noc_cli.config import Config
-
 
 # Type alias for the injected prompt callable.
 # Signature: (label, default="", hide_input=False) -> str

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from noc_cli.config import Config
@@ -12,7 +10,9 @@ def anyio_backend():
     return "asyncio"
 
 
-async def test_investigate_forwards_config_and_memory_store_to_run_agent(monkeypatch, tmp_path):
+async def test_investigate_forwards_config_and_memory_store_to_run_agent(
+    monkeypatch, tmp_path
+):
     """Agent path must forward config + memory_store to run_agent."""
     import noc_cli.agent.runner as runner_mod
     from noc_cli.investigate import InvestigationError, run_investigation
@@ -36,7 +36,9 @@ async def test_investigate_forwards_config_and_memory_store_to_run_agent(monkeyp
         )
 
     assert "config" in captured, "run_agent was not called or did not receive config"
-    assert "memory_store" in captured, "run_agent was not called or did not receive memory_store"
+    assert "memory_store" in captured, (
+        "run_agent was not called or did not receive memory_store"
+    )
     assert captured["config"] is cfg
 
 
