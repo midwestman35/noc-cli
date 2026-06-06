@@ -18,6 +18,7 @@ from textual.widgets import Footer, Input, Static
 
 from noc_cli import __version__
 from noc_cli.config import Config
+from noc_cli.tui.chat import ChatSession, build_sdk_client_factory
 from noc_cli.tui.command import KNOWN_COMMANDS, ParsedCommand, parse_input
 from noc_cli.models import Comment, Ticket
 from noc_cli.rubric import load_rubric
@@ -416,6 +417,13 @@ class WatchApp(App[None]):
         self._investigate_lines: list[str] = []
         self._investigate_phases: dict[str, bool] = {}
         self._investigate_error: tuple[int, str] | None = None
+        # Per-ticket chat: one resumable ChatSession per ticket id, its rendered
+        # output buffer, and the id currently mid-turn (gates the spinner).
+        self._chat_sessions: dict[int, ChatSession] = {}
+        self._chat_lines: dict[int, list[str]] = {}
+        self._chatting_id: int | None = None
+        # ticket folder -> no-arg client factory. Overridable in tests.
+        self._chat_client_factory = build_sdk_client_factory
         # New-update decorations (session-only): ids with an unseen change, and
         # per-id pulse deadlines (monotonic seconds).
         self._unread_ids: set[int] = set()
@@ -463,12 +471,16 @@ class WatchApp(App[None]):
         self.set_interval(0.1, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
-        busy = self._polling or self._investigating_id is not None
+        busy = self._polling or self._investigating_id is not None or self._chatting_id is not None
         if busy:
             self._spinner_frame = (self._spinner_frame + 1) % len(_BRAILLE)
             if self._polling:
                 self._update_banner()
-            if self._selected_is_investigating():
+            if self._selected_is_investigating() or (
+                self._chatting_id is not None
+                and self.selected_row is not None
+                and self.selected_row.ticket_id == self._chatting_id
+            ):
                 self._refresh_detail()
 
     def _tickets_root(self) -> Path:
@@ -979,7 +991,63 @@ class WatchApp(App[None]):
         row = self.selected_row
         if row is None:
             return "No ticket selected."
-        return f"Chat · ZD-{row.ticket_id}\n\nType a message in the box to start."
+        lines = [f"Chat · ZD-{row.ticket_id}", ""]
+        body = self._chat_lines.get(row.ticket_id, [])
+        if not body:
+            return "\n".join(lines + ["Type a message in the box to start."])
+        lines.extend(body)
+        if self._chatting_id == row.ticket_id:
+            frame = _BRAILLE[self._spinner_frame]
+            lines.append(f"{frame} …")
+        return "\n".join(lines)
+
+    def _submit_chat_turn(self, text: str) -> None:
+        row = self.selected_row
+        if row is None:
+            self._set_notification("Select a ticket to chat about.")
+            return
+        ticket_id = row.ticket_id
+        self._detail_index = _DETAIL_MODES.index("Chat")
+        self._chat_lines.setdefault(ticket_id, [])
+        self._run_chat(ticket_id, text)
+
+    def _ensure_chat_session(self, ticket_id: int) -> ChatSession:
+        session = self._chat_sessions.get(ticket_id)
+        if session is None:
+            from noc_cli.scaffold import scaffold_ticket
+
+            folder = scaffold_ticket(self._tickets_root(), ticket_id)
+            session = ChatSession(
+                ticket_id=ticket_id,
+                folder=folder.root,
+                client_factory=self._chat_client_factory(folder.root),
+            )
+            self._chat_sessions[ticket_id] = session
+        return session
+
+    @work(thread=False, exclusive=False)
+    async def _run_chat(self, ticket_id: int, text: str) -> None:
+        self._chatting_id = ticket_id
+        self._refresh_detail()
+        session = self._ensure_chat_session(ticket_id)
+        try:
+            async for line in session.send(text):
+                self._chat_on_line(ticket_id, line)
+        except Exception as exc:  # surface chat errors in the panel
+            self._chat_on_line(ticket_id, f"✗ chat error: {exc}")
+        finally:
+            self._chatting_id = None
+            self._refresh_detail()
+
+    def _chat_on_line(self, ticket_id: int, line: str) -> None:
+        self._chat_lines.setdefault(ticket_id, []).append(line)
+        row = self.selected_row
+        if (
+            row is not None
+            and row.ticket_id == ticket_id
+            and _DETAIL_MODES[self._detail_index] == "Chat"
+        ):
+            self._refresh_detail()
 
     def action_next_detail_file(self) -> None:
         row = self.selected_row
@@ -1029,7 +1097,7 @@ class WatchApp(App[None]):
 
     def _dispatch_command(self, parsed: ParsedCommand) -> None:
         if not parsed.is_command:
-            self._stub_chat(parsed.args)  # replaced by real chat in a later task
+            self._submit_chat_turn(parsed.args)
             return
         name = parsed.name
         if name == "refresh":
@@ -1090,6 +1158,3 @@ class WatchApp(App[None]):
         # "{icon}  {label}: {message}" layout with a plain-text ✓/✗ icon.
         icon = "✓" if r.ok else "✗"
         return f"  {icon}  {r.label}: {r.message}"
-
-    def _stub_chat(self, text: str) -> None:
-        self._set_notification("Chat lands in a later task — use /investigate for now.")

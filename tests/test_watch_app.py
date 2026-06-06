@@ -559,3 +559,32 @@ async def test_tab_reaches_chat_view(db_conn, tmp_path):
     assert "Chat" in label
     assert "about this ticket" in label.lower()
     assert "700" in detail
+
+
+async def test_freeform_input_starts_chat_and_renders(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    class _FakeChatClient:
+        async def connect(self): return None
+        async def disconnect(self): return None
+        async def query(self, prompt): self.p = prompt
+        async def receive_response(self):
+            class M:
+                result = "Held in queue; ALI link timed out."
+            yield M()
+        async def interrupt(self): pass
+
+    app = _make_app(_make_config(tmp_path), _FakeClient([[_ticket(45747, subject="stuck")]]), WatchState(db_conn))
+    app._chat_client_factory = lambda folder: (lambda: _FakeChatClient())  # inject fake
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        box = app.query_one("#command", Input)
+        box.value = "why is this stuck?"
+        await box.action_submit()
+        for _ in range(30):
+            await pilot.pause()
+            if "Held in queue" in app.current_detail_text:
+                break
+    assert "you ❯ why is this stuck?" in app.current_detail_text
+    assert "Held in queue" in app.current_detail_text
+    assert (tmp_path / "45747" / "CONVERSATION.jsonl").exists()
