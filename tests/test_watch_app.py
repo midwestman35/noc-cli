@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -1097,9 +1097,10 @@ async def test_take_eligible_proposes_confirmation(db_conn, tmp_path):
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
         app._scout_active = True
-        with patch(
-            "noc_cli.scout.commands.preflight_current_ticket", return_value=None
-        ), patch("noc_cli.scout.commands.resolve_owner_id", return_value=7):
+        with (
+            patch("noc_cli.scout.commands.preflight_current_ticket", return_value=None),
+            patch("noc_cli.scout.commands.resolve_owner_id", return_value=7),
+        ):
             box = app.query_one("#command", Input)
             box.value = "/take 5012"
             await box.action_submit()
@@ -1118,10 +1119,13 @@ async def test_take_ineligible_notifies_and_does_not_propose(db_conn, tmp_path):
     )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
-        with patch(
-            "noc_cli.scout.commands.preflight_current_ticket",
-            return_value="already assigned",
-        ), patch("noc_cli.scout.commands.resolve_owner_id") as owner:
+        with (
+            patch(
+                "noc_cli.scout.commands.preflight_current_ticket",
+                return_value="already assigned",
+            ),
+            patch("noc_cli.scout.commands.resolve_owner_id") as owner,
+        ):
             box = app.query_one("#command", Input)
             box.value = "/take 5012"
             await box.action_submit()
@@ -1141,9 +1145,10 @@ async def test_take_unresolved_owner_notifies(db_conn, tmp_path):
     )
     async with app.run_test(size=(120, 40)) as pilot:
         await _poll(app, pilot)
-        with patch(
-            "noc_cli.scout.commands.preflight_current_ticket", return_value=None
-        ), patch("noc_cli.scout.commands.resolve_owner_id", return_value=None):
+        with (
+            patch("noc_cli.scout.commands.preflight_current_ticket", return_value=None),
+            patch("noc_cli.scout.commands.resolve_owner_id", return_value=None),
+        ):
             box = app.query_one("#command", Input)
             box.value = "/take 5012"
             await box.action_submit()
@@ -1152,3 +1157,98 @@ async def test_take_unresolved_owner_notifies(db_conn, tmp_path):
         notification_text = app.query_one("#notification").content
     assert app._pending_take is None
     assert "Zendesk user id" in notification_text
+
+
+async def test_enter_confirms_take_and_assigns(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    writer = MagicMock()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._scout_active = True
+        app._pending_take = 5012
+        app._pending_take_owner = 7
+        with (
+            patch("noc_cli.scout.commands.preflight_current_ticket", return_value=None),
+            patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        ):
+            box = app.query_one("#command", Input)
+            box.value = ""
+            await box.action_submit()  # bare Enter confirms
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+    writer.assign_ticket.assert_called_once_with(5012, 7)
+    assert app._pending_take is None
+
+
+async def test_take_rechecks_before_assigning(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    writer = MagicMock()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._pending_take = 5012
+        app._pending_take_owner = 7
+        with (
+            patch(
+                "noc_cli.scout.commands.preflight_current_ticket",
+                return_value="already assigned",
+            ),
+            patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        ):
+            box = app.query_one("#command", Input)
+            box.value = ""
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+    writer.assign_ticket.assert_not_called()
+    assert app._pending_take is None
+
+
+async def test_escape_cancels_pending_take(db_conn, tmp_path):
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._scout_active = True
+        app._pending_take = 5012
+        app._pending_take_owner = 7
+        await pilot.press("escape")
+        await pilot.pause()
+    assert app._pending_take is None
+    assert app._scout_active is True  # still in scout mode, just no pending take
+
+
+async def test_take_surfaces_write_error(db_conn, tmp_path):
+    from textual.widgets import Input
+
+    from noc_cli.scout.writer import ZendeskWriteError
+
+    app = _make_app(
+        _make_config(tmp_path), _FakeClient([[_ticket(1)]]), WatchState(db_conn)
+    )
+    writer = MagicMock()
+    writer.assign_ticket.side_effect = ZendeskWriteError("auth failed on assign")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _poll(app, pilot)
+        app._pending_take = 5012
+        app._pending_take_owner = 7
+        with (
+            patch("noc_cli.scout.commands.preflight_current_ticket", return_value=None),
+            patch("noc_cli.scout.commands.make_writer", return_value=writer),
+        ):
+            box = app.query_one("#command", Input)
+            box.value = ""
+            await box.action_submit()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+        notification_text = app.query_one("#notification").content
+    assert app._pending_take is None
+    assert "auth failed on assign" in notification_text

@@ -1194,6 +1194,47 @@ class WatchApp(App[None]):
         self._pending_take_owner = owner_id
         self._refresh_detail()
 
+    @work(thread=True, exclusive=False)
+    def _confirm_take(self) -> None:
+        """Re-preflight (TOCTOU) then write the assignee. Off the UI thread."""
+        from noc_cli.scout import commands
+        from noc_cli.scout.writer import ZendeskWriteError
+
+        tid = self._pending_take
+        owner_id = self._pending_take_owner
+        if tid is None or owner_id is None:
+            return
+        reason = commands.preflight_current_ticket(
+            self._config, ticket_id=tid, min_staleness_days=7
+        )
+        if reason is not None:
+            self.app.call_from_thread(
+                self._take_aborted, f"Can't take #{tid}: {reason}"
+            )
+            return
+        try:
+            commands.make_writer(self._config).assign_ticket(tid, owner_id)
+        except ZendeskWriteError as exc:
+            self.app.call_from_thread(self._take_aborted, f"Zendesk error: {exc}")
+            return
+        except Exception as exc:  # pragma: no cover - defensive
+            self.app.call_from_thread(self._take_aborted, str(exc))
+            return
+        self.app.call_from_thread(self._take_assigned, tid)
+
+    def _take_aborted(self, reason: str) -> None:
+        self._pending_take = None
+        self._pending_take_owner = None
+        self._set_notification(reason)
+        self._refresh_detail()
+
+    def _take_assigned(self, tid: int) -> None:
+        self._pending_take = None
+        self._pending_take_owner = None
+        self._scout_active = False
+        self._set_notification(f"Assigned #{tid} to you.")
+        self.action_poll_now()
+
     def _render_scout_panel(self) -> str:
         if self._scouting:
             return f"{_BRAILLE[self._spinner_frame]} Scouting the Tier-1 backlog …"
@@ -1361,6 +1402,10 @@ class WatchApp(App[None]):
             return
         text = event.value
         event.input.value = ""
+        if not text.strip():
+            if self._pending_take is not None:
+                self._confirm_take()
+            return
         parsed = parse_input(text)
         if not parsed.is_command and not parsed.args:
             return
@@ -1447,6 +1492,12 @@ class WatchApp(App[None]):
     def action_interrupt(self) -> None:
         if self._ac_open:
             self._ac_close()
+            return
+        if self._pending_take is not None:
+            self._pending_take = None
+            self._pending_take_owner = None
+            self._set_notification("Take cancelled.")
+            self._refresh_detail()
             return
         if self._scout_active:
             self._scout_active = False
