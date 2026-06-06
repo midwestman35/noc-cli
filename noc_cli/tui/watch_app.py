@@ -551,6 +551,16 @@ class WatchApp(App[None]):
         self._ac_index = max(0, min(self._ac_index + delta, len(self._ac_matches) - 1))
         self._render_autocomplete()
 
+    def _ac_complete(self) -> None:
+        if not self._ac_matches:
+            return
+        index = max(0, min(self._ac_index, len(self._ac_matches) - 1))
+        name = self._ac_matches[index].name
+        box = self.query_one("#command", Input)
+        box.value = f"/{name} "  # trailing space => match_commands returns []
+        box.cursor_position = len(box.value)
+        self._ac_close()
+
     def _tick_spinner(self) -> None:
         busy = (
             self._polling
@@ -1153,6 +1163,9 @@ class WatchApp(App[None]):
             self._refresh_detail()
 
     def action_next_detail_file(self) -> None:
+        if self._ac_open:
+            self._ac_complete()
+            return
         row = self.selected_row
         if row is None:
             return
@@ -1160,6 +1173,8 @@ class WatchApp(App[None]):
         self._refresh_detail()
 
     def action_previous_detail_file(self) -> None:
+        if self._ac_open:
+            return  # swallow shift+tab while the palette is open
         row = self.selected_row
         if row is None:
             return
