@@ -382,7 +382,9 @@ def test_investigate_sets_model_profile_and_logs_usage_on_retry(tmp_path):
 
     entries = [
         json.loads(line)
-        for line in (folder.root / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (folder.root / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     usage_lines = [entry for entry in entries if entry.get("type") == "usage"]
     assert len(usage_lines) == 2

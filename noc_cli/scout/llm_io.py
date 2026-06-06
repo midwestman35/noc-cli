@@ -22,7 +22,9 @@ def extract_json(raw: str) -> str:
     return raw
 
 
-async def final_result(query_gen, *, on_result: Callable[[object], None] | None = None) -> str:
+async def final_result(
+    query_gen, *, on_result: Callable[[object], None] | None = None
+) -> str:
     """Drain a query stream, keeping only the terminal ResultMessage text.
 
     Scout does not need the rich transcript stash that ``agent/runner`` keeps —
