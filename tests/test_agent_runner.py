@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 from noc_cli.agent.runner import RunnerResult, TranscriptEntry, run_agent
@@ -344,3 +345,50 @@ def test_run_agent_passes_mcp_servers_and_allowed_tools(tmp_path):
         "mcp__history__search_history",
     ):
         assert name in opts.allowed_tools
+
+
+def test_investigate_sets_model_profile_and_logs_usage_on_retry(tmp_path):
+    folder = scaffold_ticket(tmp_path, 7001)
+    captured_options = []
+
+    async def fake_query(*, prompt, options):
+        captured_options.append(options)
+
+        class R:
+            result = '{"totally":"wrong"}'
+            is_error = False
+            usage = {"input_tokens": 5, "cache_read_input_tokens": 3}
+            total_cost_usd = 0.002
+            num_turns = 1
+            session_id = "s"
+
+        yield R()
+
+    _run(
+        run_agent(
+            ticket_id=7001,
+            folder=folder,
+            system_prompt="t",
+            history_context="",
+            _query_fn=fake_query,
+        )
+    )
+
+    assert len(captured_options) == 2
+    opts = captured_options[0]
+    assert opts.model == "claude-opus-4-8"
+    assert opts.fallback_model == "claude-sonnet-4-6"
+    assert opts.effort == "high"
+
+    entries = [
+        json.loads(line)
+        for line in (folder.root / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    usage_lines = [entry for entry in entries if entry.get("type") == "usage"]
+    assert len(usage_lines) == 2
+    assert [entry["attempt"] for entry in usage_lines] == [1, 2]
+    assert all(entry["surface"] == "investigate" for entry in usage_lines)
+    assert all(entry["model"] == "claude-opus-4-8" for entry in usage_lines)
+    assert all(entry["fallback_model"] == "claude-sonnet-4-6" for entry in usage_lines)
+    assert all(entry["effort"] == "high" for entry in usage_lines)
+    assert usage_lines[0]["usage"]["cache_read_input_tokens"] == 3
