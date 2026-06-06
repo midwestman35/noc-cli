@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
-from typing import Iterable
 
 _VERSION_RE = re.compile(r'(?m)^rubric_version:\s*"?([^"\n]+?)"?\s*$')
 _CORE_BOUNDARY = "## Symptom Class"

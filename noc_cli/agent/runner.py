@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from pydantic import ValidationError
 
@@ -195,7 +195,7 @@ async def run_agent(
     events_path = folder.root / "events.jsonl"
     hooks = build_hooks(sandbox_root=folder.root, events_path=events_path)
 
-    def _make_options() -> "ClaudeAgentOptions":
+    def _make_options() -> ClaudeAgentOptions:
         return ClaudeAgentOptions(
             system_prompt=system_prompt,
             allowed_tools=ALLOWED_TOOLS,

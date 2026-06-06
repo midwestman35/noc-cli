@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+
 from noc_cli.models import Ticket
 from noc_cli.scout.runner import run_scout
 

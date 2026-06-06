@@ -15,7 +15,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from noc_cli.agent.runner import RunnerResult, _extract_json_from_result
+from noc_cli.agent.runner import _extract_json_from_result
 from noc_cli.cli import app
 from noc_cli.scaffold import scaffold_ticket
 

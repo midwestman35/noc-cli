@@ -282,7 +282,7 @@ def render_handoff(
             shutil.move(str(src_file), dst_file)
 
 
-def consulted_runbook_slugs(transcript: "list[TranscriptEntry]") -> list[str]:
+def consulted_runbook_slugs(transcript: list[TranscriptEntry]) -> list[str]:
     """Return ordered, de-duplicated runbook slugs the agent actually read."""
     slugs: list[str] = []
     for entry in transcript:
@@ -364,7 +364,7 @@ def validation_warnings(
 
 
 def render_reasoning(
-    transcript: "list[TranscriptEntry]",
+    transcript: list[TranscriptEntry],
     handoff: Handoff | None,
     folder: TicketFolder,
 ) -> None:

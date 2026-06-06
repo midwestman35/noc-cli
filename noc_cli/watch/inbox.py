@@ -10,7 +10,6 @@ from rich.text import Text
 
 from noc_cli.models import Ticket
 
-
 # Ordered phase checklist for the inline `investigate` panel. Each entry is
 # (substring, label): the substring is matched against a `mark_done` line from
 # `cli.py` (see PhaseTracker.mark_done output); the label is shown in the TUI.

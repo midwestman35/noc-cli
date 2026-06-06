@@ -1,14 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from typer.testing import CliRunner
-
 import httpx
+from typer.testing import CliRunner
 
 from noc_cli.cli import app
 from noc_cli.models import Ticket
-from noc_cli.scout.writer import ZendeskWriteError
 from noc_cli.scout.models import RankedCandidate, ScoutReport
+from noc_cli.scout.writer import ZendeskWriteError
 from noc_cli.zendesk import ZendeskError
 
 runner = CliRunner()

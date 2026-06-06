@@ -245,7 +245,7 @@ class ForkPacket(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _check_invariants(self) -> "ForkPacket":
+    def _check_invariants(self) -> ForkPacket:
         # Symptom tag must be in the approved set (spec §17).
         if self.symptom_tag not in APPROVED_SYMPTOM_TAGS:
             raise ValueError(

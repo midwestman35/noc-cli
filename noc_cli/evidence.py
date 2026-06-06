@@ -66,7 +66,7 @@ def gather_evidence(
     zendesk_attachments: list[dict],
     extra_files: list[Path],
     pastes: list[PasteInput],
-    zendesk_client: "ZendeskClient | None" = None,
+    zendesk_client: ZendeskClient | None = None,
 ) -> EvidenceBundle:
     """Gather all evidence into the ticket sandbox.
 
@@ -126,8 +126,8 @@ def _extract_zip(zip_path: Path, logs_dir: Path) -> None:
 
 def write_ticket_source(
     folder: TicketFolder,
-    ticket: "Ticket",
-    comments: "list[Comment] | None" = None,
+    ticket: Ticket,
+    comments: list[Comment] | None = None,
 ) -> Path:
     """Persist the fetched Zendesk ticket as readable markdown for the agent.
 

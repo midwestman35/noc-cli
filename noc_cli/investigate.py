@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from noc_cli.config import Config, db_path
 
@@ -27,10 +28,10 @@ async def run_investigation(
     tickets_root: Path,
     owner: str,
     initial_hypothesis: str = "",
-    extra_files: Optional[list[Path]] = None,
-    pastes: "Optional[list[str | PasteInput]]" = None,
+    extra_files: list[Path] | None = None,
+    pastes: list[str | PasteInput] | None = None,
     force: bool = False,
-    fixture: Optional[Path] = None,
+    fixture: Path | None = None,
     no_agent: bool = False,
     verbose: bool = False,
     on_line: Callable[[str], None] | None = None,
@@ -137,7 +138,7 @@ async def run_investigation(
 
     from noc_cli.models import Handoff
 
-    handoff: Optional[Handoff] = None
+    handoff: Handoff | None = None
     transcript = []
     if fixture is not None:
         import json

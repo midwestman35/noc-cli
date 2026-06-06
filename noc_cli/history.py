@@ -40,8 +40,8 @@ class HistoryCandidate:
 
 def seed_history(
     symptom_tag: str,
-    zendesk_client: "ZendeskClient",
-    memory_store: "MemoryStore",
+    zendesk_client: ZendeskClient,
+    memory_store: MemoryStore,
     limit: int = 20,
 ) -> list[HistoryCandidate]:
     """Return a merged, deduplicated candidate pool for the agent's historical_matches.

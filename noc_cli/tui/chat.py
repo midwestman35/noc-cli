@@ -113,7 +113,10 @@ def build_sdk_client_factory(folder: Path) -> Callable:
     read-only hooks. The returned callable takes no args and returns a client."""
 
     def _factory():
-        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient  # noqa: PLC0415
+        from claude_agent_sdk import (  # noqa: PLC0415
+            ClaudeAgentOptions,
+            ClaudeSDKClient,
+        )
 
         from noc_cli.agent.harness import build_hooks  # noqa: PLC0415
 

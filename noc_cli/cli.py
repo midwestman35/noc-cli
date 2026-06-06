@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -186,7 +185,7 @@ def investigate(
     force: bool = typer.Option(
         False, "--force", help="Override the STATE.md soft-lock"
     ),
-    fixture: Optional[Path] = typer.Option(
+    fixture: Path | None = typer.Option(
         None,
         "--fixture",
         help="Offline replay: directory containing handoff_good.json (skips fetch + agent)",
@@ -194,7 +193,7 @@ def investigate(
     no_agent: bool = typer.Option(
         False, "--no-agent", help="Dry path: scaffold + gather + redact; no LLM"
     ),
-    suspect: Optional[str] = typer.Option(
+    suspect: str | None = typer.Option(
         None,
         "--suspect",
         help="Runbook slug to seed grounding (e.g. low-audio); skips the interactive prompt.",
@@ -239,7 +238,7 @@ async def _run_investigate(
     extra_files: list[Path],
     pastes: list[str],
     force: bool,
-    fixture: Optional[Path],
+    fixture: Path | None,
     no_agent: bool,
     initial_hypothesis: str,
     verbose: bool,
@@ -290,7 +289,7 @@ async def _run_investigate(
 
 @app.command(hidden=True, deprecated=True)
 def scout(
-    take: Optional[int] = typer.Option(
+    take: int | None = typer.Option(
         None,
         "--take",
         help="Confirm, assign this ticket id to yourself, then investigate.",

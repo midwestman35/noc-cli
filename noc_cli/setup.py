@@ -15,7 +15,6 @@ from pathlib import Path
 
 from noc_cli.config import Config
 
-
 # Type alias for the injected prompt callable.
 # Signature: (label, default="", hide_input=False) -> str
 PromptFn = Callable[..., str]
